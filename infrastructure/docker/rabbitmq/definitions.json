@@ -1,0 +1,56 @@
+{
+  "rabbit_version": "3.13.0",
+  "users": [
+    {
+      "name": "admin",
+      "password_hash": "EyhEcW6cW+2aH0KQTZGC8ZI+Z0q36+1wkSoWJIKHoCpnNrOi",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": ["administrator"]
+    }
+  ],
+  "vhosts": [{ "name": "/" }],
+  "permissions": [
+    { "user": "admin", "vhost": "/", "configure": ".*", "write": ".*", "read": ".*" }
+  ],
+  "exchanges": [
+    { "name": "order_events", "vhost": "/", "type": "topic", "durable": true },
+    { "name": "location_events", "vhost": "/", "type": "topic", "durable": true },
+    { "name": "dispatch_retry_exchange", "vhost": "/", "type": "direct", "durable": true },
+    { "name": "dlx", "vhost": "/", "type": "direct", "durable": true }
+  ],
+  "queues": [
+    {
+      "name": "dispatch_queue", "vhost": "/", "durable": true,
+      "arguments": { "x-dead-letter-exchange": "dlx", "x-dead-letter-routing-key": "dispatch.dead" }
+    },
+    {
+      "name": "dispatch_retry_queue", "vhost": "/", "durable": true,
+      "arguments": { "x-message-ttl": 30000, "x-dead-letter-exchange": "", "x-dead-letter-routing-key": "dispatch_queue" }
+    },
+    {
+      "name": "order_projection_queue", "vhost": "/", "durable": true,
+      "arguments": { "x-dead-letter-exchange": "dlx", "x-dead-letter-routing-key": "order_projection.dead" }
+    },
+    {
+      "name": "realtime_queue", "vhost": "/", "durable": true,
+      "arguments": { "x-dead-letter-exchange": "dlx", "x-dead-letter-routing-key": "realtime.dead" }
+    },
+    {
+      "name": "realtime_location_queue", "vhost": "/", "durable": true,
+      "arguments": { "x-dead-letter-exchange": "dlx", "x-dead-letter-routing-key": "realtime.dead" }
+    },
+    { "name": "dlq_dispatch", "vhost": "/", "durable": true },
+    { "name": "dlq_realtime", "vhost": "/", "durable": true }
+  ],
+  "bindings": [
+    { "source": "order_events", "vhost": "/", "destination": "dispatch_queue", "destination_type": "queue", "routing_key": "order.created" },
+    { "source": "order_events", "vhost": "/", "destination": "dispatch_queue", "destination_type": "queue", "routing_key": "order.cancelled" },
+    { "source": "order_events", "vhost": "/", "destination": "order_projection_queue", "destination_type": "queue", "routing_key": "order.assigned" },
+    { "source": "order_events", "vhost": "/", "destination": "realtime_queue", "destination_type": "queue", "routing_key": "order.#" },
+    { "source": "location_events", "vhost": "/", "destination": "realtime_location_queue", "destination_type": "queue", "routing_key": "courier.location.updated" },
+    { "source": "dispatch_retry_exchange", "vhost": "/", "destination": "dispatch_retry_queue", "destination_type": "queue", "routing_key": "dispatch.retry" },
+    { "source": "dlx", "vhost": "/", "destination": "dlq_dispatch", "destination_type": "queue", "routing_key": "dispatch.dead" },
+    { "source": "dlx", "vhost": "/", "destination": "dlq_dispatch", "destination_type": "queue", "routing_key": "order_projection.dead" },
+    { "source": "dlx", "vhost": "/", "destination": "dlq_realtime", "destination_type": "queue", "routing_key": "realtime.dead" }
+  ]
+}
