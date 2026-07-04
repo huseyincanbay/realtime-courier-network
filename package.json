@@ -13,6 +13,7 @@
     "build:packages": "pnpm --filter \"./packages/**\" build",
     "dev:auth": "pnpm --filter @rcn/auth-service dev",
     "dev:gateway": "pnpm --filter @rcn/gateway dev",
+    "dev:order": "pnpm --filter @rcn/order-service dev",
     "start:infra": "docker compose up -d",
     "stop:infra": "docker compose down",
     "lint": "eslint \"{apps,packages}/**/*.ts\"",
