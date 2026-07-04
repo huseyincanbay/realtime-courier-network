@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package location;
+
+service LocationService {
+  rpc GetNearbyCouriers (NearbyRequest) returns (NearbyResponse);
+}
+
+message NearbyRequest {
+  double lat = 1;
+  double lng = 2;
+  int32 radius_m = 3;
+  int32 limit = 4;
+  string service_token = 5;
+}
+
+message NearbyResponse {
+  repeated Courier couriers = 1;
+}
+
+message Courier {
+  string courier_id = 1;
+  double lat = 2;
+  double lng = 3;
+  double distance_m = 4;
+}
