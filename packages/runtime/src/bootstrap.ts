@@ -9,7 +9,11 @@ export async function createHttpApp(
   app.useLogger(app.get(Logger));
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(
-    new ValidationPipe({ whitelist: true, transform: true }),
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      transformOptions: { enableImplicitConversion: true },
+    }),
   );
   app.enableShutdownHooks();
   return app;
