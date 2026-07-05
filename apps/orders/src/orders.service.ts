@@ -69,6 +69,24 @@ export class OrdersService {
     return this.toResponse(order);
   }
 
+  async markAssignedFromDispatch(orderId: string, courierId: string): Promise<void> {
+    const order = await this.orders.findOne({ where: { id: orderId } });
+    if (!order) return;
+    if (order.status === OrderStatus.ASSIGNED && order.courierId === courierId) return;
+    if (
+      order.status === OrderStatus.PICKED_UP ||
+      order.status === OrderStatus.IN_TRANSIT ||
+      order.status === OrderStatus.DELIVERED ||
+      order.status === OrderStatus.CANCELLED
+    ) {
+      return;
+    }
+    order.courierId = courierId;
+    order.status = OrderStatus.ASSIGNED;
+    await this.orders.save(order);
+    this.logger.log(`Order ${orderId} projected → assigned (courier ${courierId.slice(0, 8)})`);
+  }
+
   async updateStatus(id: string, newStatus: OrderStatus) {
     const order = await this.orders.findOne({ where: { id } });
     if (!order) throw new NotFoundException('Order not found');

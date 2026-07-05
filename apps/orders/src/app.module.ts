@@ -8,6 +8,7 @@ import appConfig from './config';
 import { OrderEntity } from './order.entity';
 import { OrdersService } from './orders.service';
 import { OrdersController } from './orders.controller';
+import { OrderProjectionConsumer } from './order-projection.consumer';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -27,7 +28,7 @@ import { HealthController } from './health.controller';
     OutboxModule,
   ],
   controllers: [OrdersController, HealthController],
-  providers: [OrdersService],
+  providers: [OrdersService, OrderProjectionConsumer],
 })
 export class AppModule implements OnModuleInit {
   constructor(private readonly outbox: OutboxService) {}
