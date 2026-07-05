@@ -16,6 +16,8 @@
     "dev:order": "pnpm --filter @rcn/order-service dev",
     "dev:location": "pnpm --filter @rcn/location-service dev",
     "dev:dispatch": "pnpm --filter @rcn/dispatch-service dev",
+    "dev:realtime": "pnpm --filter @rcn/realtime-service dev",
+    "dev": "concurrently -n gw,auth,order,loc,disp,rt -c blue,green,yellow,cyan,magenta,white \"pnpm dev:gateway\" \"pnpm dev:auth\" \"pnpm dev:order\" \"pnpm dev:location\" \"pnpm dev:dispatch\" \"pnpm dev:realtime\"",
     "start:infra": "docker compose up -d",
     "stop:infra": "docker compose down",
     "lint": "eslint \"{apps,packages}/**/*.ts\"",
@@ -23,6 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "concurrently": "^8.2.2",
     "prettier": "^3.2.5",
     "typescript": "^5.4.5"
   }

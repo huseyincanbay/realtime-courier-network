@@ -45,9 +45,3 @@ export function assertProdSecrets(secrets: RequiredSecret[]): void {
     }
   }
 }
-
-export function assertMetricsToken(): void {
-  if (process.env.NODE_ENV === 'production' && !process.env.METRICS_TOKEN) {
-    throw new Error('[config] METRICS_TOKEN is required in production');
-  }
-}
