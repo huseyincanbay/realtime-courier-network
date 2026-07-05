@@ -43,31 +43,5 @@ services:
       timeout: 5s
       retries: 10
 
-  prometheus:
-    image: prom/prometheus:v2.54.1
-    container_name: rcn-prometheus
-    ports:
-      - '9090:9090'
-    volumes:
-      - ./infrastructure/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
-
-  grafana:
-    image: grafana/grafana:11.2.0
-    container_name: rcn-grafana
-    ports:
-      - '3000:3000'
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_USERS_ALLOW_SIGN_UP: 'false'
-    volumes:
-      - ./infrastructure/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - rcn-grafana:/var/lib/grafana
-    depends_on:
-      - prometheus
-
 volumes:
   rcn-pgdata:
-  rcn-grafana:
