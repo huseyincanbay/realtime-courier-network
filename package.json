@@ -11,6 +11,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "build:packages": "pnpm --filter \"./packages/**\" build",
+    "prepare": "pnpm build:packages",
     "dev:auth": "pnpm --filter @rcn/auth-service dev",
     "dev:gateway": "pnpm --filter @rcn/gateway dev",
     "dev:order": "pnpm --filter @rcn/order-service dev",
