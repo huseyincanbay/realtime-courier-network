@@ -70,7 +70,7 @@ sequenceDiagram
         end
     else nobody nearby
         D-)MQ: retry queue — 30s TTL, dead-letters back
-        Note over D,MQ: no in-process timer;<br/>the delay lives in the broker
+        Note over D,MQ: no in-process timer —<br/>the delay lives in the broker
     end
 ```
 
