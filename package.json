@@ -21,7 +21,7 @@
     "dev": "concurrently -n gw,auth,order,loc,disp,rt -c blue,green,yellow,cyan,magenta,white \"pnpm dev:gateway\" \"pnpm dev:auth\" \"pnpm dev:order\" \"pnpm dev:location\" \"pnpm dev:dispatch\" \"pnpm dev:realtime\"",
     "start:infra": "docker compose up -d",
     "stop:infra": "docker compose down",
-    "lint": "eslint \"{apps,packages}/**/*.ts\"",
+    "seed": "bash scripts/seed.sh",
     "format": "prettier --write \"{apps,packages}/**/*.ts\""
   },
   "devDependencies": {
