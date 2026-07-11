@@ -184,25 +184,91 @@ infrastructure/
   docker/             Postgres init, RabbitMQ topology
 ```
 
-## What is deliberately not here
+## API by example
 
-This is a study of the patterns above rather than a finished product, and it
-reads more clearly for being small. A few things are consciously left out:
+A few of the core calls, each with the request that goes in and the response
+that comes back. Everything is behind the gateway on `/api/v1`; the
+authenticated routes take a bearer token issued by register or login.
 
-- Auth issues a single short-lived token. No refresh-token rotation, no OAuth —
-  the blocklist and lockout are enough to make the point.
-- There is no metrics-and-dashboards layer. The services emit structured JSON
-  logs tied together by a request id, which is enough to follow a call across
-  all six; standing up Prometheus and Grafana on top would mostly repeat an
-  observability story told elsewhere, so it stays out of this one.
-- There is no user interface. The WebSocket flow is exercised with a small
-  client script, not a frontend.
-- Everything runs on a single node through Docker Compose — no Kubernetes, no
-  multi-region, nothing managed.
-- Tests are smoke-level and manual rather than an automated suite.
+**Register a customer** — `POST /api/v1/auth/register`
 
-Each of those has an obvious place it would slot into, and the code is laid out
-so it could. None of it was needed to show how the pieces fit.
+```json
+{
+  "email": "customer@example.com",
+  "password": "demo-password",
+  "role": "customer",
+  "name": "Test Customer"
+}
+```
+
+→ `201 Created`
+
+```json
+{
+  "user": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "email": "customer@example.com",
+    "role": "customer"
+  },
+  "accessToken": "eyJhbGciOiJIUzI1NiJ9.<claims>.<signature>"
+}
+```
+
+**Place an order** — `POST /api/v1/orders`, `Authorization: Bearer <token>`
+
+```json
+{
+  "pickupLat": 41.037,
+  "pickupLng": 28.985,
+  "dropoffLat": 40.99,
+  "dropoffLng": 29.027,
+  "priority": "normal"
+}
+```
+
+→ `201 Created` — it starts life unassigned:
+
+```json
+{
+  "id": "22222222-2222-4222-8222-222222222222",
+  "orderNumber": "ORD-MK3P8Q2Z",
+  "customerId": "11111111-1111-4111-8111-111111111111",
+  "status": "pending",
+  "priority": "normal",
+  "pickupLat": 41.037,
+  "pickupLng": 28.985,
+  "dropoffLat": 40.99,
+  "dropoffLng": 29.027,
+  "createdAt": "2026-01-15T09:24:11.204Z"
+}
+```
+
+**Follow it until a courier is assigned** — `GET /api/v1/orders/22222222-2222-4222-8222-222222222222`
+
+```json
+{
+  "id": "22222222-2222-4222-8222-222222222222",
+  "orderNumber": "ORD-MK3P8Q2Z",
+  "customerId": "11111111-1111-4111-8111-111111111111",
+  "courierId": "a0000000-0000-4000-8000-000000000003",
+  "status": "assigned",
+  "priority": "normal",
+  "pickupLat": 41.037,
+  "pickupLng": 28.985,
+  "dropoffLat": 40.99,
+  "dropoffLng": 29.027,
+  "createdAt": "2026-01-15T09:24:11.204Z"
+}
+```
+
+A second or two after the order is placed, `status` moves from `pending` to
+`assigned` and `courierId` is filled in — dispatch found the nearest online
+courier, locked it, and the assignment propagated back onto the order's own
+record. That single field change is the whole asynchronous path.
+
+Every endpoint, with the bearer token wired up between requests, is in the
+Postman collection under
+[postman/](postman/realtime-courier-network.postman_collection.json).
 
 ## License
 
