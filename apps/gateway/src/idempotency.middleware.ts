@@ -30,7 +30,12 @@ export class IdempotencyMiddleware implements NestMiddleware {
     const cached = await this.redis.idemGet(key);
     if (cached) {
       const { status, body } = JSON.parse(cached);
-      return res.status(status).json(body);
+      res.status(status);
+      if (typeof body === 'string') {
+        res.setHeader('content-type', 'application/json');
+        return res.send(body);
+      }
+      return res.json(body);
     }
 
     if (!(await this.redis.idemLock(key, this.lockTtl))) {
@@ -38,10 +43,15 @@ export class IdempotencyMiddleware implements NestMiddleware {
     }
 
     const originalJson = res.json.bind(res);
+    const originalSend = res.send.bind(res);
     let captured: unknown;
     res.json = (body: unknown) => {
       captured = body;
       return originalJson(body);
+    };
+    res.send = (body: unknown) => {
+      captured = body;
+      return originalSend(body);
     };
 
     res.on('finish', async () => {

@@ -4,6 +4,7 @@ import { Request, Response } from 'express';
 @Injectable()
 export class ProxyService {
   private readonly logger = new Logger('Proxy');
+  private readonly timeoutMs = 5000;
 
   async forward(req: Request, res: Response, targetBase: string): Promise<void> {
     const url = `${targetBase}${req.originalUrl}`;
@@ -19,8 +20,10 @@ export class ProxyService {
       headers['x-user-role'] = user.role;
     }
 
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      const init: RequestInit = { method: req.method, headers };
+      const init: RequestInit = { method: req.method, headers, signal: controller.signal };
       if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body) {
         init.body = JSON.stringify(req.body);
       }
@@ -33,6 +36,8 @@ export class ProxyService {
     } catch (err) {
       this.logger.error(`Proxy to ${targetBase} failed: ${(err as Error).message}`);
       res.status(502).json({ success: false, message: 'Upstream service unavailable' });
+    } finally {
+      clearTimeout(timer);
     }
   }
 }
