@@ -277,6 +277,29 @@ Every endpoint, with the bearer token wired up between requests, is in the
 Postman collection under
 [postman/](postman/realtime-courier-network.postman_collection.json).
 
+## Deliberately out of scope
+
+A study reads more clearly for staying small, so some things are left out on
+purpose — each with an obvious production home:
+
+- **Metrics dashboards.** Observability here is correlation IDs across
+  structured logs; a Prometheus/Grafana stack would repeat ground a separate
+  telemetry project already covers.
+- **Refresh-token rotation and OAuth.** Auth issues one short-lived token with a
+  Redis `jti` blocklist and login lockout — revocation, the hard half, is done;
+  rotation is the production extension.
+- **Pagination.** List endpoints cap at 50; keyset pagination is where this
+  grows under real volume.
+- **Per-service Dockerfiles.** The infrastructure is containerised and the six
+  services run under one `pnpm dev`; a shared multi-stage image is a deployment
+  step, not a design one.
+- **Multi-node and Kubernetes.** Everything runs on a single node. What scales
+  is the design — the outbox, the locks, the idempotent consumers — not this
+  compose file.
+- **Broad test coverage.** The pure core — the circuit breaker and the order
+  state machine — is unit-tested; wider integration and end-to-end suites are
+  left for a real deployment.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
