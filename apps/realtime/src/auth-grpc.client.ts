@@ -2,7 +2,8 @@ import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ClientGrpc, ClientProxyFactory, Transport } from '@nestjs/microservices';
 import { ConfigService } from '@nestjs/config';
 import { join } from 'path';
-import { Observable, firstValueFrom, timeout } from 'rxjs';
+import { Observable, firstValueFrom } from 'rxjs';
+import { CircuitBreaker, CircuitOpenError } from '@rcn/runtime';
 import { INT_TO_ROLE } from '@rcn/types';
 
 interface RawResponse {
@@ -24,6 +25,7 @@ export interface ValidatedUser {
 export class AuthGrpcClient implements OnModuleInit {
   private readonly logger = new Logger(AuthGrpcClient.name);
   private svc!: AuthServiceGrpc;
+  private breaker!: CircuitBreaker<[string], RawResponse>;
   private readonly serviceToken: string;
 
   constructor(private readonly config: ConfigService) {
@@ -42,17 +44,23 @@ export class AuthGrpcClient implements OnModuleInit {
       },
     }) as unknown as ClientGrpc;
     this.svc = client.getService<AuthServiceGrpc>('AuthService');
+    this.breaker = new CircuitBreaker(
+      (token: string) =>
+        firstValueFrom(this.svc.validateToken({ token, service_token: this.serviceToken })),
+      { name: 'realtime-auth-grpc', failureThreshold: 5, resetTimeoutMs: 30000, timeoutMs: 3000 },
+    );
     this.logger.log(`Auth gRPC client ready (target: ${url})`);
   }
 
   async validate(token: string): Promise<ValidatedUser> {
     try {
-      const r = await firstValueFrom(
-        this.svc.validateToken({ token, service_token: this.serviceToken }).pipe(timeout(3000)),
-      );
+      const r = await this.breaker.fire(token);
       if (!r.valid || !r.user) return { valid: false };
       return { valid: true, userId: r.user.user_id, role: INT_TO_ROLE[r.user.role] };
-    } catch {
+    } catch (err) {
+      if (err instanceof CircuitOpenError) {
+        this.logger.warn('Auth circuit open — failing fast');
+      }
       return { valid: false };
     }
   }
