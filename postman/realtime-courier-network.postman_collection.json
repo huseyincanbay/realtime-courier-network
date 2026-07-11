@@ -1,0 +1,297 @@
+{
+  "info": {
+    "_postman_id": "rcn-0000-4000-8000-000000000001",
+    "name": "realtime-courier-network",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Every HTTP endpoint of the courier network, routed through the gateway on http://localhost:4000.\n\nSetup:\n1. pnpm start:infra\n2. pnpm dev  (wait for all six services)\n3. pnpm seed  (puts online couriers near the pickup point)\n\nRun order:\n- Auth > Register (customer): saves accessToken and userId.\n- Orders > Create order: places an order at the seeded pickup, saves orderId.\n- Orders > Get order (poll for assignment): re-send until status flips from pending to assigned. Dispatch finds a seeded courier, locks it, and assigns in the background.\n- Auth > Register (courier) and Location > Update location demonstrate the courier side.\n\nThe collection carries a bearer token as {{accessToken}}; requests that act as a courier use {{courierToken}}."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register (customer)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.collectionVariables.set('accessToken', res.accessToken);",
+                  "pm.collectionVariables.set('userId', res.user.id);",
+                  "pm.collectionVariables.set('customerEmail', res.user.email);",
+                  "pm.test('201 created with a token', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(res.accessToken).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"customer_{{$timestamp}}@rcn.dev\",\n  \"password\": \"{{customerPassword}}\",\n  \"role\": \"customer\",\n  \"name\": \"Demo Customer\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+            "description": "Creates a customer and returns an access token (registration auto-issues one)."
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.collectionVariables.set('accessToken', res.accessToken);",
+                  "pm.test('200 with a token', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(res.accessToken).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customerEmail}}\",\n  \"password\": \"{{customerPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+            "description": "Logs in the customer registered above and refreshes {{accessToken}}."
+          }
+        },
+        {
+          "name": "Register (courier)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.collectionVariables.set('courierToken', res.accessToken);",
+                  "pm.collectionVariables.set('courierId', res.user.id);",
+                  "pm.test('201 created with a token', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(res.accessToken).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"courier_{{$timestamp}}@rcn.dev\",\n  \"password\": \"{{courierPassword}}\",\n  \"role\": \"courier\",\n  \"name\": \"Demo Courier\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+            "description": "Creates a courier identity, saved as {{courierToken}} / {{courierId}}, used by Location > Update location."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/auth/logout", "host": ["{{baseUrl}}"], "path": ["auth", "logout"] },
+            "description": "Blocklists the current token's jti until it would have expired."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "Create order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.collectionVariables.set('orderId', res.id);",
+                  "pm.test('201 created, starts pending', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(res.status).to.eql('pending');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}", "description": "Optional. Reuse the same value on a retry to get the cached response instead of creating a second order." }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pickupLat\": 41.0370,\n  \"pickupLng\": 28.9850,\n  \"dropoffLat\": 40.9900,\n  \"dropoffLng\": 29.0270,\n  \"priority\": \"normal\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/orders", "host": ["{{baseUrl}}"], "path": ["orders"] },
+            "description": "Places an order at the seeded pickup point (Taksim). Pickup coordinates must match pnpm seed so a nearby courier exists. Saves orderId."
+          }
+        },
+        {
+          "name": "Get order (poll for assignment)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "console.log('status =', res.status, '| courier =', res.courierId);",
+                  "pm.test('order has a status', function () {",
+                  "  pm.expect(res.status).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/orders/{{orderId}}", "host": ["{{baseUrl}}"], "path": ["orders", "{{orderId}}"] },
+            "description": "Re-send this a couple of times after creating an order. status moves pending -> assigned once dispatch locks a nearby seeded courier, and courierId gets populated. This is the async chain: order.created -> outbox -> RabbitMQ -> dispatch -> gRPC getNearby -> Redis lock -> order.assigned -> the orders read model."
+          }
+        },
+        {
+          "name": "List my orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/orders", "host": ["{{baseUrl}}"], "path": ["orders"] },
+            "description": "Lists orders visible to the current user."
+          }
+        },
+        {
+          "name": "Update status",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"picked_up\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/orders/{{orderId}}/status", "host": ["{{baseUrl}}"], "path": ["orders", "{{orderId}}", "status"] },
+            "description": "Advances the order along its state machine. Valid values: pending, assigned, picked_up, in_transit, delivered, cancelled. picked_up is only accepted once the order is assigned."
+          }
+        },
+        {
+          "name": "Cancel order",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"changed my mind\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/orders/{{orderId}}/cancel", "host": ["{{baseUrl}}"], "path": ["orders", "{{orderId}}", "cancel"] },
+            "description": "Cancels the order. If it was assigned, dispatch releases the courier's lock (the compensating half of the saga)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Location",
+      "item": [
+        {
+          "name": "Update location (courier)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{courierToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 41.0375,\n  \"longitude\": 28.9855\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/location/update", "host": ["{{baseUrl}}"], "path": ["location", "update"] },
+            "description": "Records a position for the registered courier ({{courierToken}}). Writes a PostGIS point and a Redis shadow, and emits a location event."
+          }
+        },
+        {
+          "name": "Nearby couriers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/location/nearby?lat=41.0370&lng=28.9850&radiusM=5000&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["location", "nearby"],
+              "query": [
+                { "key": "lat", "value": "41.0370" },
+                { "key": "lng", "value": "28.9850" },
+                { "key": "radiusM", "value": "5000" },
+                { "key": "limit", "value": "10" }
+              ]
+            },
+            "description": "The spatial query dispatch relies on: couriers within radiusM of a point, nearest first."
+          }
+        },
+        {
+          "name": "Get courier location",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{courierToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/location/courier/{{courierId}}", "host": ["{{baseUrl}}"], "path": ["location", "courier", "{{courierId}}"] },
+            "description": "A courier's latest position (Redis shadow with Postgres fallback). Scoped to the courier themselves or an admin; customers follow their order's courier over the WebSocket instead."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Gateway health",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health/liveness", "host": ["{{baseUrl}}"], "path": ["health", "liveness"] }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:4000/api/v1" },
+    { "key": "accessToken", "value": "" },
+    { "key": "courierToken", "value": "" },
+    { "key": "orderId", "value": "" },
+    { "key": "userId", "value": "" },
+    { "key": "courierId", "value": "" },
+    { "key": "customerEmail", "value": "" },
+    { "key": "customerPassword", "value": "Passw0rd!" },
+    { "key": "courierPassword", "value": "Passw0rd!" }
+  ]
+}

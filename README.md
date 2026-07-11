@@ -160,6 +160,13 @@ development and hard-off in production. RabbitMQ loads its full topology
 (exchanges, queues, bindings, the dead-letter and retry wiring) from a
 definitions file at startup, so there is nothing to set up by hand.
 
+Once the services are up, seed a few online couriers so dispatch has someone
+to assign — without it a new order stays `pending` with nobody to match it:
+
+```
+pnpm seed
+```
+
 Run them individually if you prefer:
 
 ```
