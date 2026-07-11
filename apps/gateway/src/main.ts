@@ -1,11 +1,13 @@
 import 'reflect-metadata';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
+import helmet from 'helmet';
 import { createHttpApp } from '@rcn/runtime';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await createHttpApp(AppModule);
+  app.use(helmet());
   const cfg = app.get(ConfigService).get('app');
   await app.listen(cfg.port);
   app.get(Logger).log(`gateway on :${cfg.port}`);

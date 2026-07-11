@@ -1,4 +1,4 @@
-import { All, Controller, Get, Req, Res } from '@nestjs/common';
+import { All, Controller, Get, Post, Req, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
 import { ProxyService } from './proxy.service';
@@ -9,7 +9,16 @@ export class AuthProxyController {
   constructor(
     private readonly proxy: ProxyService,
     private readonly config: ConfigService,
+    private readonly redis: RedisService,
   ) {}
+
+  @Post('logout')
+  async logout(@Req() req: Request, @Res() res: Response) {
+    const header = req.headers.authorization;
+    const token = header?.startsWith('Bearer ') ? header.slice(7) : null;
+    if (token) await this.redis.evictToken(token);
+    return this.proxy.forward(req, res, this.config.get('app').services.auth);
+  }
 
   @All(['', '*'])
   forward(@Req() req: Request, @Res() res: Response) {

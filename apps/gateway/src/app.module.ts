@@ -1,5 +1,7 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { pinoOptions } from '@rcn/runtime';
 import appConfig from './config';
@@ -23,6 +25,7 @@ import {
       envFilePath: ['.env', '../../.env'],
     }),
     LoggerModule.forRoot(pinoOptions('gateway')),
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
   ],
   controllers: [
     AuthProxyController,
@@ -30,7 +33,12 @@ import {
     LocationProxyController,
     HealthController,
   ],
-  providers: [AuthGrpcClient, RedisService, ProxyService],
+  providers: [
+    AuthGrpcClient,
+    RedisService,
+    ProxyService,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

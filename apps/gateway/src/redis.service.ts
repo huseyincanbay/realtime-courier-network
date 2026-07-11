@@ -34,6 +34,10 @@ export class RedisService implements OnModuleDestroy {
       .catch(() => undefined);
   }
 
+  async evictToken(token: string): Promise<void> {
+    await this.client.del(this.tokenKey(token)).catch(() => undefined);
+  }
+
   async idemGet(key: string): Promise<string | null> {
     return this.client.get(`idem:${key}`);
   }
