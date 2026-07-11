@@ -87,9 +87,15 @@ export class OrdersService {
     this.logger.log(`Order ${orderId} projected → assigned (courier ${courierId.slice(0, 8)})`);
   }
 
-  async updateStatus(id: string, newStatus: OrderStatus) {
+  async updateStatus(id: string, newStatus: OrderStatus, userId: string, role: string) {
     const order = await this.orders.findOne({ where: { id } });
     if (!order) throw new NotFoundException('Order not found');
+    if (role === 'customer' && order.customerId !== userId) {
+      throw new ForbiddenException('You can only update your own orders');
+    }
+    if (role === 'courier' && order.courierId !== userId) {
+      throw new ForbiddenException('You can only update orders assigned to you');
+    }
     if (!canTransition(order.status, newStatus)) {
       throw new BadRequestException(`Cannot transition ${order.status} → ${newStatus}`);
     }

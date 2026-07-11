@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { OutboxService } from '@rcn/events';
@@ -82,7 +82,10 @@ export class LocationService {
     }));
   }
 
-  async getCourierLocation(courierId: string) {
+  async getCourierLocation(courierId: string, requesterId?: string, role?: string) {
+    if (role !== 'admin' && requesterId !== courierId) {
+      throw new ForbiddenException('You can only read your own location');
+    }
     const shadow = await this.redis.getShadow(courierId);
     if (shadow) return shadow;
     const [row] = await this.dataSource.query(

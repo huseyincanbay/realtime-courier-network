@@ -22,8 +22,12 @@ export class LocationController {
   }
 
   @Get('courier/:id')
-  getCourier(@Param('id') id: string) {
-    return this.location.getCourierLocation(id);
+  getCourier(
+    @Param('id') id: string,
+    @Headers('x-user-id') userId: string,
+    @Headers('x-user-role') role: string,
+  ) {
+    return this.location.getCourierLocation(id, userId, role);
   }
 
   @Get('nearby')
