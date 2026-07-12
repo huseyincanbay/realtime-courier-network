@@ -34,7 +34,7 @@ export class AuthService {
     const user = await this.users.save(
       this.users.create({
         email: dto.email,
-        passwordHash: hashPassword(dto.password),
+        passwordHash: await hashPassword(dto.password),
         role: dto.role,
         name: dto.name ?? null,
       }),
@@ -51,7 +51,7 @@ export class AuthService {
     }
 
     const user = await this.users.findOne({ where: { email: dto.email } });
-    if (!user || !verifyPassword(dto.password, user.passwordHash)) {
+    if (!user || !(await verifyPassword(dto.password, user.passwordHash))) {
       const fails = await this.redis.recordFailure(dto.email, lockout.windowSec);
       if (fails >= lockout.threshold) {
         this.logger.warn(`${redactEmail(dto.email)} locked (${fails} fails)`);
