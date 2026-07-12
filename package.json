@@ -19,7 +19,7 @@
     "dev:dispatch": "pnpm --filter @rcn/dispatch-service dev",
     "dev:realtime": "pnpm --filter @rcn/realtime-service dev",
     "dev": "concurrently -n gw,auth,order,loc,disp,rt -c blue,green,yellow,cyan,magenta,white \"pnpm dev:gateway\" \"pnpm dev:auth\" \"pnpm dev:order\" \"pnpm dev:location\" \"pnpm dev:dispatch\" \"pnpm dev:realtime\"",
-    "start:infra": "docker compose up -d",
+    "start:infra": "docker compose up -d postgres redis rabbitmq",
     "stop:infra": "docker compose down",
     "seed": "bash scripts/seed.sh",
     "test": "vitest run",

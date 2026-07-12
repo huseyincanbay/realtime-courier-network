@@ -1,3 +1,29 @@
+x-app-env: &app-env
+  NODE_ENV: development
+  DB_HOST: postgres
+  DB_PORT: 5432
+  DB_USER: postgres
+  DB_PASSWORD: postgres
+  DB_NAME: dispatch
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  RABBITMQ_URL: amqp://admin:admin123@rabbitmq:5672/
+  JWT_SECRET: dev-jwt-secret-change-in-production
+  INTER_SERVICE_SECRET: dev-inter-service-secret-min-32-chars-long
+  LOG_LEVEL: info
+
+x-app-build: &app-build
+  context: .
+  dockerfile: infrastructure/docker/Dockerfile
+
+x-app-deps: &app-deps
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  rabbitmq:
+    condition: service_healthy
+
 services:
   postgres:
     image: postgis/postgis:16-3.4
@@ -42,6 +68,90 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  auth:
+    build:
+      <<: *app-build
+      args:
+        APP_DIR: auth
+    container_name: rcn-auth
+    environment:
+      <<: *app-env
+      AUTH_PORT: 3001
+      AUTH_GRPC_PORT: 50052
+    depends_on: *app-deps
+    restart: on-failure
+
+  orders:
+    build:
+      <<: *app-build
+      args:
+        APP_DIR: orders
+    container_name: rcn-orders
+    environment:
+      <<: *app-env
+      ORDER_PORT: 3002
+    depends_on: *app-deps
+    restart: on-failure
+
+  location:
+    build:
+      <<: *app-build
+      args:
+        APP_DIR: location
+    container_name: rcn-location
+    environment:
+      <<: *app-env
+      LOCATION_HTTP_PORT: 3003
+      LOCATION_GRPC_PORT: 50051
+    depends_on: *app-deps
+    restart: on-failure
+
+  dispatch:
+    build:
+      <<: *app-build
+      args:
+        APP_DIR: dispatch
+    container_name: rcn-dispatch
+    environment:
+      <<: *app-env
+      DISPATCH_PORT: 3005
+      LOCATION_GRPC_URL: location:50051
+    depends_on: *app-deps
+    restart: on-failure
+
+  realtime:
+    build:
+      <<: *app-build
+      args:
+        APP_DIR: realtime
+    container_name: rcn-realtime
+    environment:
+      <<: *app-env
+      REALTIME_PORT: 3004
+      AUTH_GRPC_URL: auth:50052
+    ports:
+      - '3004:3004'
+    depends_on: *app-deps
+    restart: on-failure
+
+  gateway:
+    build:
+      <<: *app-build
+      args:
+        APP_DIR: gateway
+    container_name: rcn-gateway
+    environment:
+      <<: *app-env
+      GATEWAY_PORT: 4000
+      AUTH_GRPC_URL: auth:50052
+      AUTH_SERVICE_URL: http://auth:3001
+      ORDER_SERVICE_URL: http://orders:3002
+      LOCATION_SERVICE_URL: http://location:3003
+    ports:
+      - '4000:4000'
+    depends_on: *app-deps
+    restart: on-failure
 
 volumes:
   rcn-pgdata:

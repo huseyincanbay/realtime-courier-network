@@ -178,6 +178,16 @@ pnpm dev:dispatch
 pnpm dev:realtime
 ```
 
+Or run the whole stack — all six services and the infrastructure — in Docker
+with one command, no local Node required:
+
+```
+docker compose up --build
+```
+
+The gateway comes up on the same `:4000`, and `pnpm seed` works against it
+just the same.
+
 ## Layout
 
 ```
@@ -290,9 +300,6 @@ purpose — each with an obvious production home:
   rotation is the production extension.
 - **Pagination.** List endpoints cap at 50; keyset pagination is where this
   grows under real volume.
-- **Per-service Dockerfiles.** The infrastructure is containerised and the six
-  services run under one `pnpm dev`; a shared multi-stage image is a deployment
-  step, not a design one.
 - **Multi-node and Kubernetes.** Everything runs on a single node. What scales
   is the design — the outbox, the locks, the idempotent consumers — not this
   compose file.
