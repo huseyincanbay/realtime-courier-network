@@ -82,7 +82,10 @@ export class LocationGrpcClient implements OnModuleInit {
         lng: c.lng,
         distanceM: c.distance_m,
       }));
-    } catch {
+    } catch (err) {
+      this.logger.warn(
+        `getNearby degraded, returning no couriers: ${(err as Error).message}`,
+      );
       return [];
     }
   }
