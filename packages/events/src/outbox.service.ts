@@ -14,6 +14,7 @@ export interface OutboxEvent {
 export class OutboxService implements OnModuleDestroy {
   private readonly logger = new Logger(OutboxService.name);
   private timer: NodeJS.Timeout | null = null;
+  private publishing = false;
 
   constructor(
     @InjectRepository(OutboxEntity)
@@ -28,9 +29,13 @@ export class OutboxService implements OnModuleDestroy {
 
   startPublisher(intervalMs = 1000): void {
     this.timer = setInterval(() => {
-      this.publishPending().catch((e) =>
-        this.logger.error(`Publish loop failed: ${(e as Error).message}`),
-      );
+      if (this.publishing) return;
+      this.publishing = true;
+      this.publishPending()
+        .catch((e) => this.logger.error(`Publish loop failed: ${(e as Error).message}`))
+        .finally(() => {
+          this.publishing = false;
+        });
     }, intervalMs);
     this.timer.unref?.();
   }
