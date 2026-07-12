@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { randomBytes } from 'crypto';
 import { OutboxService } from '@rcn/events';
 import {
   DeliveryPriority,
@@ -35,7 +36,9 @@ export class OrdersService {
       const repo = manager.getRepository(OrderEntity);
       const saved = await repo.save(
         repo.create({
-          orderNumber: `ORD-${Date.now().toString(36).toUpperCase()}`,
+          orderNumber: `ORD-${Date.now().toString(36).toUpperCase()}-${randomBytes(3)
+            .toString('hex')
+            .toUpperCase()}`,
           customerId,
           status: OrderStatus.PENDING,
           priority: dto.priority ?? DeliveryPriority.NORMAL,
@@ -88,19 +91,22 @@ export class OrdersService {
   }
 
   async updateStatus(id: string, newStatus: OrderStatus, userId: string, role: string) {
-    const order = await this.orders.findOne({ where: { id } });
-    if (!order) throw new NotFoundException('Order not found');
-    if (role === 'customer' && order.customerId !== userId) {
-      throw new ForbiddenException('You can only update your own orders');
-    }
-    if (role === 'courier' && order.courierId !== userId) {
-      throw new ForbiddenException('You can only update orders assigned to you');
-    }
-    if (!canTransition(order.status, newStatus)) {
-      throw new BadRequestException(`Cannot transition ${order.status} → ${newStatus}`);
-    }
-
     const updated = await this.dataSource.transaction(async (manager) => {
+      const order = await manager.findOne(OrderEntity, {
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!order) throw new NotFoundException('Order not found');
+      if (role === 'customer' && order.customerId !== userId) {
+        throw new ForbiddenException('You can only update your own orders');
+      }
+      if (role === 'courier' && order.courierId !== userId) {
+        throw new ForbiddenException('You can only update orders assigned to you');
+      }
+      if (!canTransition(order.status, newStatus)) {
+        throw new BadRequestException(`Cannot transition ${order.status} → ${newStatus}`);
+      }
+
       const previousStatus = order.status;
       order.status = newStatus;
       const saved = await manager.getRepository(OrderEntity).save(order);
