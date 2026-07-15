@@ -1,22 +1,25 @@
 # realtime-courier-network
 
-The backend for an on-demand delivery flow: a customer places an order, the
-system finds the nearest free courier and assigns it, and the customer follows
-that courier on a live map until the delivery is done — or cancelled, in which
-case the courier goes back into the pool.
+Event-driven backend for on-demand courier dispatch - six NestJS services that
+carry an order from *placed* to *assigned and tracked live*, and the
+distributed-systems plumbing that makes that reliable.
 
-The delivery domain is mostly a vehicle. What I wanted to work through is the
-plumbing that sits underneath any event-driven system of this shape:
+**Stack** — TypeScript · NestJS · PostgreSQL / PostGIS · Redis · RabbitMQ · gRPC · WebSocket · Docker
 
-- keeping a database row and the event that announces it from ever disagreeing,
-- handing a scarce resource (a courier) to exactly one order at a time,
-- retrying work that currently has nowhere to go, without a single in-process timer,
-- and making sure one service falling over doesn't drag the rest down with it.
+**What it demonstrates**
 
-Six services written in NestJS, talking over gRPC for the synchronous calls and
-RabbitMQ for everything asynchronous. Postgres — with PostGIS for the spatial
-queries — is the source of truth. Redis handles caches, the dispatch lock, and
-the WebSocket authorization checks.
+- **Transactional outbox** — the order row and its event commit together, or not at all
+- **Distributed Redis lock** — a courier goes to exactly one order
+- **Broker-driven retry** — delayed retries with no in-process timer
+- **Hand-rolled circuit breaker** — no library; fails fast when a dependency is down
+- **Saga compensation** — a cancel releases the courier as a forward action
+- **CQRS read-model projection** — each service owns its table, updated from events
+- **PostGIS geospatial search** — nearest online courier over a spatial index
+- **WebSocket handshake auth + idempotent writes**
+
+gRPC carries the synchronous calls, RabbitMQ everything asynchronous; Postgres
+(with PostGIS) is the source of truth, and Redis holds the caches, the dispatch
+lock, and the WebSocket auth checks.
 
 ## The services
 
@@ -36,8 +39,8 @@ production guards), and `events` (the RabbitMQ wrapper and the outbox).
 
 ## What happens when an order is placed
 
-This is the path a single order takes, and it touches most of the parts worth
-talking about.
+This is the path a single order takes — the notes on the diagram call out the
+pieces that matter.
 
 ```mermaid
 sequenceDiagram
@@ -74,75 +77,44 @@ sequenceDiagram
     end
 ```
 
-1. The customer POSTs to the gateway. The gateway validates the token against
-   auth over gRPC — but only on a cache miss, and the whole call sits behind a
-   circuit breaker, so if auth is down the gateway fails fast instead of piling
-   up three-second timeouts.
-2. orders writes two rows in one transaction: the order itself, and an
-   `order.created` row in an outbox table. Either both land or neither does. A
-   background loop polls the outbox and publishes to RabbitMQ a moment later. If
-   the broker were down, the order would still be saved and the event would go
-   out once it recovered.
-3. dispatch is subscribed to that event. It asks location for couriers near the
-   pickup (gRPC, circuit-breakered again), walks the list nearest-first, and
-   claims one with a Redis lock — `SET NX` with a TTL, released later by a small
-   Lua script so it can only ever delete its own lock. The first courier it
-   locks is the one it assigns.
-4. If nobody is nearby, dispatch publishes the order to a queue that has no
-   consumer and a 30-second message TTL. Thirty seconds later RabbitMQ
-   dead-letters it straight back onto the dispatch queue and the attempt runs
-   again with a wider search radius. No `setTimeout`, nothing lost on a restart —
-   the delay lives in the broker.
-5. The assignment goes out as `order.assigned`, again through the outbox. orders
-   consumes it and updates its own row's courier and status — its read model,
-   kept current from the event rather than by letting dispatch reach into another
-   service's table. realtime consumes the same event and pushes it to whoever is
-   subscribed to that order.
-6. As the courier moves, location publishes position updates. realtime throttles
-   them per courier and forwards each to the room for the order that courier is
-   currently on, so the customer watches the marker move.
-7. If the customer cancels, the `order.cancelled` event reaches dispatch, which
-   releases the courier's lock — the compensating half of the saga — and the
-   courier is free again.
+## Key engineering decisions
 
-## The patterns, and why each is here
+A few forks in the road, and why this branch:
 
-**Transactional outbox.** Writing to the database and publishing to a broker are
-two separate systems; you cannot commit to both atomically. So the event goes
-into the same transaction as the state change, and a separate publisher ships
-it. This is what keeps an order from existing with no event to trigger its
-dispatch.
+**Outbox over dual-write.** The database and the broker are two systems you can't
+commit to atomically. The event goes into the same transaction as the state
+change and a separate publisher ships it, so an order can never exist with no
+event to dispatch it.
 
-**Dead-letter + TTL retry queue.** A consumer-less queue with a message TTL that
-dead-letters back to the working queue gives you durable, delayed retries without
-an in-process scheduler that a restart would wipe out.
+**A broker-driven retry over an in-process scheduler.** Delayed retries live in a
+consumer-less queue with a message TTL that dead-letters back to the working
+queue — durable across restarts, with no `setTimeout` to lose.
 
-**Distributed lock.** `SET NX EX` in Redis is the atomic "claim this courier"
-primitive; the Lua compare-and-delete release means two dispatcher instances
-can't hand the same courier to two orders.
+**A hand-rolled circuit breaker over a library.** About forty lines with no
+dependency, around every call that leaves a service: five failures and it opens,
+failing fast for thirty seconds before letting one probe through.
 
-**Circuit breaker.** Around every gRPC call that leaves a service. Five failures
-and it opens, rejecting instantly for thirty seconds before letting a single
-probe through. It's the difference between one service being down and all of them
-hanging on it.
+**gRPC for the synchronous calls, RabbitMQ for the rest.** Typed contracts where
+a caller genuinely waits for an answer (token validation, "who's nearby"); a
+decoupled bus for everything that shouldn't block a request.
 
-**WebSocket handshake auth.** The token is checked while the connection is being
-established, not after — so by the time a client can send anything, it is already
-known who they are.
+**scrypt over bcrypt.** bcrypt's native build was fragile on the Node version in
+use; scrypt ships inside Node's `crypto`, so there is no native compile step and
+the hashing runs async, off the event loop.
 
-**Read-model projection.** orders never lets another service write its table. It
-listens for `order.assigned` and updates itself, idempotently, so a redelivered
-event does no harm.
+**A pessimistic row lock over optimistic versioning.** A status transition reads
+its order `FOR UPDATE` inside the transaction, so two concurrent updates
+serialize instead of racing — without surfacing a version-conflict error to the
+caller.
 
-**Saga compensation.** The distributed "undo" for a cancel is a new forward
-action — release the lock — not a rollback, because the earlier steps already
-committed.
+**Each service owns its data.** orders never lets another service write its
+table; it projects `order.assigned` onto its own read model, idempotently, so a
+redelivered event does no harm.
 
-Alongside those are the ordinary-but-necessary pieces: refresh-free JWTs with a
-Redis blocklist and login lockout, an idempotency layer keyed by user and route
-so a retried POST does not create two orders, structured JSON logs that carry a
-request id across every service, and production guards that refuse to boot on a
-dev secret or with schema auto-sync left on.
+The ordinary-but-necessary pieces sit under the same rules: refresh-free JWTs
+with a Redis blocklist and login lockout, idempotency keyed by user and route,
+structured JSON logs carrying a request id across every service, and production
+guards that refuse to boot on a dev secret or with schema auto-sync left on.
 
 ## Running it
 
@@ -203,35 +175,24 @@ infrastructure/
 
 ## API by example
 
-A few of the core calls, each with the request that goes in and the response
-that comes back. Everything is behind the gateway on `/api/v1`; the
-authenticated routes take a bearer token issued by register or login.
+A few core calls through the gateway on `/api/v1`; authenticated routes take a
+bearer token from register or login. The full set, with the token chained
+between requests, is in the
+[Postman collection](postman/realtime-courier-network.postman_collection.json).
 
-**Register a customer** — `POST /api/v1/auth/register`
+**Register** — `POST /api/v1/auth/register`
 
 ```json
 {
   "email": "customer@example.com",
   "password": "demo-password",
-  "role": "customer",
-  "name": "Test Customer"
+  "role": "customer"
 }
 ```
 
-→ `201 Created`
+→ `201`, returning `{ "user": { "id": "…", "role": "customer" }, "accessToken": "eyJ…" }`.
 
-```json
-{
-  "user": {
-    "id": "11111111-1111-4111-8111-111111111111",
-    "email": "customer@example.com",
-    "role": "customer"
-  },
-  "accessToken": "eyJhbGciOiJIUzI1NiJ9.<claims>.<signature>"
-}
-```
-
-**Place an order** — `POST /api/v1/orders`, `Authorization: Bearer <token>`
+**Place an order** — `POST /api/v1/orders` with `Authorization: Bearer <token>`
 
 ```json
 {
@@ -243,13 +204,12 @@ authenticated routes take a bearer token issued by register or login.
 }
 ```
 
-→ `201 Created` — it starts life unassigned:
+→ `201`, unassigned:
 
 ```json
 {
   "id": "22222222-2222-4222-8222-222222222222",
   "orderNumber": "ORD-MK3P8Q2Z",
-  "customerId": "11111111-1111-4111-8111-111111111111",
   "status": "pending",
   "priority": "normal",
   "pickupLat": 41.037,
@@ -260,32 +220,11 @@ authenticated routes take a bearer token issued by register or login.
 }
 ```
 
-**Follow it until a courier is assigned** — `GET /api/v1/orders/22222222-2222-4222-8222-222222222222`
-
-```json
-{
-  "id": "22222222-2222-4222-8222-222222222222",
-  "orderNumber": "ORD-MK3P8Q2Z",
-  "customerId": "11111111-1111-4111-8111-111111111111",
-  "courierId": "a0000000-0000-4000-8000-000000000003",
-  "status": "assigned",
-  "priority": "normal",
-  "pickupLat": 41.037,
-  "pickupLng": 28.985,
-  "dropoffLat": 40.99,
-  "dropoffLng": 29.027,
-  "createdAt": "2026-01-15T09:24:11.204Z"
-}
-```
-
-A second or two after the order is placed, `status` moves from `pending` to
-`assigned` and `courierId` is filled in — dispatch found the nearest online
-courier, locked it, and the assignment propagated back onto the order's own
-record. That single field change is the whole asynchronous path.
-
-Every endpoint, with the bearer token wired up between requests, is in the
-Postman collection under
-[postman/](postman/realtime-courier-network.postman_collection.json).
+**Follow it** — `GET /api/v1/orders/{id}`. A second or two later the same order
+reads `"status": "assigned"` with `"courierId": "a0000000-…-03"` filled in:
+dispatch found the nearest online courier, locked it, and the assignment
+propagated back onto the order's own record. That one field change is the whole
+asynchronous path.
 
 ## Deliberately out of scope
 
