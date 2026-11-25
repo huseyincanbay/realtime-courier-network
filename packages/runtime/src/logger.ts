@@ -41,9 +41,3 @@ export function redactEmail(email?: string | null): string {
   if (at < 1) return '***';
   return `${email[0]}***${email.slice(at)}`;
 }
-
-export function redactPhone(phone?: string | null): string {
-  if (!phone) return '';
-  if (phone.length <= 4) return '*'.repeat(phone.length);
-  return `${phone.slice(0, 2)}***${phone.slice(-2)}`;
-}
