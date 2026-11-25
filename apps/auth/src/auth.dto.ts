@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 import { UserRole } from '@rcn/types';
 
 export class RegisterDto {
@@ -8,7 +8,7 @@ export class RegisterDto {
   @MinLength(8)
   password: string;
 
-  @IsEnum(UserRole)
+  @IsIn([UserRole.CUSTOMER, UserRole.COURIER])
   role: UserRole;
 
   @IsOptional()
