@@ -10,7 +10,7 @@ export class ProxyService {
     const url = `${targetBase}${req.originalUrl}`;
     const headers: Record<string, string> = {
       'content-type': req.headers['content-type'] ?? 'application/json',
-      'x-request-id': (req.headers['x-request-id'] as string) ?? '',
+      'x-request-id': String(req.id),
     };
     if (req.headers.authorization) headers.authorization = req.headers.authorization;
 
