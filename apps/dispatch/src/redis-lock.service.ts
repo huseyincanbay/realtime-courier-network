@@ -5,7 +5,7 @@ import Redis from 'ioredis';
 @Injectable()
 export class RedisLockService implements OnModuleDestroy {
   private readonly client: Redis;
-  private readonly lockTtl = 300;
+  private readonly lockTtl = 3600;
   private readonly releaseScript =
     'if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end';
 

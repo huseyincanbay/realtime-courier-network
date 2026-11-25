@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { RabbitMQService } from '@rcn/events';
-import { QUEUES } from '@rcn/types';
+import { OrderStatus, QUEUES } from '@rcn/types';
 import { DispatchService, OrderPayload } from './dispatch.service';
 
 @Injectable()
@@ -39,7 +39,12 @@ export class OrderEventConsumer implements OnModuleInit {
         );
         break;
       case 'order.cancelled':
-        await this.dispatch.handleCancelled(msg.orderId as string);
+        await this.dispatch.release(msg.orderId as string, 'cancelled');
+        break;
+      case 'order.status.updated':
+        if (msg.newStatus === OrderStatus.DELIVERED) {
+          await this.dispatch.release(msg.orderId as string, 'delivered');
+        }
         break;
       default:
         this.logger.debug(`Ignoring event type: ${msg.type}`);

@@ -45,7 +45,9 @@
   "bindings": [
     { "source": "order_events", "vhost": "/", "destination": "dispatch_queue", "destination_type": "queue", "routing_key": "order.created" },
     { "source": "order_events", "vhost": "/", "destination": "dispatch_queue", "destination_type": "queue", "routing_key": "order.cancelled" },
+    { "source": "order_events", "vhost": "/", "destination": "dispatch_queue", "destination_type": "queue", "routing_key": "order.status.updated" },
     { "source": "order_events", "vhost": "/", "destination": "order_projection_queue", "destination_type": "queue", "routing_key": "order.assigned" },
+    { "source": "order_events", "vhost": "/", "destination": "order_projection_queue", "destination_type": "queue", "routing_key": "order.dispatch.failed" },
     { "source": "order_events", "vhost": "/", "destination": "realtime_queue", "destination_type": "queue", "routing_key": "order.#" },
     { "source": "location_events", "vhost": "/", "destination": "realtime_location_queue", "destination_type": "queue", "routing_key": "courier.location.updated" },
     { "source": "dispatch_retry_exchange", "vhost": "/", "destination": "dispatch_retry_queue", "destination_type": "queue", "routing_key": "dispatch.retry" },
