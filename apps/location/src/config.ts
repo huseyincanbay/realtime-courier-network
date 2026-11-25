@@ -12,5 +12,6 @@ export default registerAs('app', () => {
     grpcUrl: `0.0.0.0:${process.env.LOCATION_GRPC_PORT ?? '50051'}`,
     shadowTtl: parseInt(process.env.LOCATION_SHADOW_TTL ?? '60', 10),
     defaultRadiusM: parseInt(process.env.DEFAULT_SEARCH_RADIUS_M ?? '5000', 10),
+    maxLocationAgeSec: parseInt(process.env.LOCATION_MAX_AGE_SEC ?? '60', 10),
   };
 });

@@ -2,7 +2,12 @@ import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nest
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { OutboxService } from '@rcn/events';
-import { EVENT_VERSIONS, EXCHANGES, ROUTING_KEYS } from '@rcn/types';
+import {
+  CourierLocationUpdatedEvent,
+  EVENT_VERSIONS,
+  EXCHANGES,
+  ROUTING_KEYS,
+} from '@rcn/types';
 import { RedisService } from './redis.service';
 
 export interface NearbyCourier {
@@ -23,11 +28,15 @@ export class LocationService {
     private readonly config: ConfigService,
   ) {}
 
-  async updateLocation(courierId: string, latitude: number, longitude: number) {
+  async updateLocation(courierId: string, role: string, latitude: number, longitude: number) {
+    if (role !== 'courier') throw new ForbiddenException('Only couriers report a location');
     await this.dataSource.transaction(async (manager) => {
       await manager.query(
         `INSERT INTO locations.courier_locations (courier_id, latitude, longitude, location)
-         VALUES ($1, $2, $3, ST_SetSRID(ST_MakePoint($3, $2), 4326)::geography)`,
+         VALUES ($1, $2, $3, ST_SetSRID(ST_MakePoint($3, $2), 4326)::geography)
+         ON CONFLICT (courier_id) DO UPDATE
+         SET latitude = EXCLUDED.latitude, longitude = EXCLUDED.longitude,
+             location = EXCLUDED.location, recorded_at = now()`,
         [courierId, latitude, longitude],
       );
       await this.outbox.storeEvent(manager, {
@@ -40,7 +49,7 @@ export class LocationService {
           courierId,
           lat: latitude,
           lng: longitude,
-        },
+        } satisfies CourierLocationUpdatedEvent,
       });
     });
 
@@ -59,20 +68,18 @@ export class LocationService {
     radiusM?: number,
     limit?: number,
   ): Promise<NearbyCourier[]> {
-    const radius = radiusM ?? this.config.get('app').defaultRadiusM;
+    const cfg = this.config.get('app');
+    const radius = radiusM ?? cfg.defaultRadiusM;
     const max = limit ?? 10;
     const rows = await this.dataSource.query(
-      `SELECT courier_id, latitude, longitude, distance_m FROM (
-         SELECT DISTINCT ON (courier_id)
-           courier_id, latitude, longitude,
-           ST_Distance(location, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography) AS distance_m
-         FROM locations.courier_locations
-         WHERE ST_DWithin(location, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography, $3)
-         ORDER BY courier_id, recorded_at DESC
-       ) latest
+      `SELECT courier_id, latitude, longitude,
+              ST_Distance(location, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography) AS distance_m
+       FROM locations.courier_locations
+       WHERE ST_DWithin(location, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography, $3)
+         AND recorded_at > now() - make_interval(secs => $5)
        ORDER BY distance_m ASC
        LIMIT $4`,
-      [lat, lng, radius, max],
+      [lat, lng, radius, max, cfg.maxLocationAgeSec],
     );
     return rows.map((r: Record<string, string>) => ({
       courierId: r.courier_id,
@@ -90,8 +97,7 @@ export class LocationService {
     if (shadow) return shadow;
     const [row] = await this.dataSource.query(
       `SELECT courier_id, latitude, longitude, extract(epoch from recorded_at)*1000 AS recorded_at
-       FROM locations.courier_locations WHERE courier_id = $1
-       ORDER BY recorded_at DESC LIMIT 1`,
+       FROM locations.courier_locations WHERE courier_id = $1`,
       [courierId],
     );
     if (!row) throw new NotFoundException('No location for courier');

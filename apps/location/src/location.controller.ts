@@ -17,8 +17,12 @@ export class LocationController {
 
   @Post('update')
   @HttpCode(200)
-  update(@Headers('x-user-id') courierId: string, @Body() dto: UpdateLocationDto) {
-    return this.location.updateLocation(courierId, dto.latitude, dto.longitude);
+  update(
+    @Headers('x-user-id') courierId: string,
+    @Headers('x-user-role') role: string,
+    @Body() dto: UpdateLocationDto,
+  ) {
+    return this.location.updateLocation(courierId, role, dto.latitude, dto.longitude);
   }
 
   @Get('courier/:id')

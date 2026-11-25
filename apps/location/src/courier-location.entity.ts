@@ -1,18 +1,8 @@
-import {
-  Column,
-  CreateDateColumn,
-  Entity,
-  Index,
-  PrimaryGeneratedColumn,
-} from 'typeorm';
+import { Column, Entity, Index, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 
 @Entity({ schema: 'locations', name: 'courier_locations' })
 export class CourierLocationEntity {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
-  @Index()
-  @Column({ name: 'courier_id', type: 'uuid' })
+  @PrimaryColumn({ name: 'courier_id', type: 'uuid' })
   courierId: string;
 
   @Column({ type: 'double precision' })
@@ -25,7 +15,6 @@ export class CourierLocationEntity {
   @Column({ type: 'geography', spatialFeatureType: 'Point', srid: 4326 })
   location: string;
 
-  @Index()
-  @CreateDateColumn({ name: 'recorded_at' })
+  @UpdateDateColumn({ name: 'recorded_at' })
   recordedAt: Date;
 }
