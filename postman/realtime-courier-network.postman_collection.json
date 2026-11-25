@@ -3,7 +3,7 @@
     "_postman_id": "rcn-0000-4000-8000-000000000001",
     "name": "realtime-courier-network",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Every HTTP endpoint of the courier network, routed through the gateway on http://localhost:4000.\n\nSetup:\n1. pnpm start:infra\n2. pnpm dev  (wait for all six services)\n3. pnpm seed  (puts online couriers near the pickup point)\n\nRun order:\n- Auth > Register (customer): saves accessToken and userId.\n- Orders > Create order: places an order at the seeded pickup, saves orderId.\n- Orders > Get order (poll for assignment): re-send until status flips from pending to assigned. Dispatch finds a seeded courier, locks it, and assigns in the background.\n- Auth > Register (courier) and Location > Update location demonstrate the courier side.\n\nThe collection carries a bearer token as {{accessToken}}; requests that act as a courier use {{courierToken}}."
+    "description": "Every HTTP endpoint of the courier network, routed through the gateway on http://localhost:4000.\n\nSetup:\n1. pnpm start:infra\n2. pnpm dev  (wait for all six services)\n3. pnpm seed  (puts online couriers, each with a login, near the pickup point)\n\nThe requests run top to bottom, by hand or in the Collection Runner:\n- Auth: registers a customer (saves accessToken) and a courier of its own (saves courierToken).\n- Orders > Create order: places an order at the seeded pickup, saves orderId.\n- Orders > Get order (poll for assignment): re-send until status flips from pending to assigned; the Runner repeats it by itself. Dispatch finds the nearest seeded courier, locks it, and assigns in the background.\n- Orders > Login (assigned courier): signs in as the seeded courier that got the order.\n- Orders > Update status: sent as that courier. Cancel order, sent as the customer, then releases the courier.\n- Location: the registered courier reports a position and reads it back.\n- Sign out > Logout: last, because it revokes the customer token.\n\nThe collection carries a bearer token as {{accessToken}}; the assigned seeded courier acts with {{assignedCourierToken}}, the registered one with {{courierToken}}."
   },
   "auth": {
     "type": "bearer",
@@ -108,15 +108,6 @@
             "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
             "description": "Creates a courier identity, saved as {{courierToken}} / {{courierId}}, used by Location > Update location."
           }
-        },
-        {
-          "name": "Logout",
-          "request": {
-            "method": "POST",
-            "header": [],
-            "url": { "raw": "{{baseUrl}}/auth/logout", "host": ["{{baseUrl}}"], "path": ["auth", "logout"] },
-            "description": "Blocklists the current token's jti until it would have expired."
-          }
         }
       ]
     },
@@ -168,7 +159,13 @@
                   "console.log('status =', res.status, '| courier =', res.courierId);",
                   "pm.test('order has a status', function () {",
                   "  pm.expect(res.status).to.be.a('string');",
-                  "});"
+                  "});",
+                  "if (res.courierId) {",
+                  "  pm.collectionVariables.set('assignedCourierId', res.courierId);",
+                  "} else if (res.status === 'pending') {",
+                  "  setTimeout(function () {}, 1000);",
+                  "  postman.setNextRequest(pm.info.requestName);",
+                  "}"
                 ]
               }
             }
@@ -177,7 +174,48 @@
             "method": "GET",
             "header": [],
             "url": { "raw": "{{baseUrl}}/orders/{{orderId}}", "host": ["{{baseUrl}}"], "path": ["orders", "{{orderId}}"] },
-            "description": "Re-send this a couple of times after creating an order. status moves pending -> assigned once dispatch locks a nearby seeded courier, and courierId gets populated. This is the async chain: order.created -> outbox -> RabbitMQ -> dispatch -> gRPC getNearby -> Redis lock -> order.assigned -> the orders read model."
+            "description": "Re-send this a couple of times after creating an order. status moves pending -> assigned once dispatch locks a nearby seeded courier, and courierId gets populated and saved as assignedCourierId. This is the async chain: order.created -> outbox -> RabbitMQ -> dispatch -> gRPC getNearby -> Redis lock -> order.assigned -> the orders read model."
+          }
+        },
+        {
+          "name": "Login (assigned courier)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('assignedCourierId') || '';",
+                  "pm.collectionVariables.set('assignedCourierEmail', 'courier' + Number(id.slice(-2)) + '@rcn.dev');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.collectionVariables.set('assignedCourierToken', res.accessToken);",
+                  "pm.test('200 with a token', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(res.accessToken).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{assignedCourierEmail}}\",\n  \"password\": \"{{seedPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+            "description": "Signs in as the seeded courier the order went to: an id ending in 03 is courier3@rcn.dev. pnpm seed creates these logins. Saves {{assignedCourierToken}}."
           }
         },
         {
@@ -192,6 +230,7 @@
         {
           "name": "Update status",
           "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{assignedCourierToken}}", "type": "string" }] },
             "method": "PATCH",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
@@ -200,7 +239,7 @@
               "options": { "raw": { "language": "json" } }
             },
             "url": { "raw": "{{baseUrl}}/orders/{{orderId}}/status", "host": ["{{baseUrl}}"], "path": ["orders", "{{orderId}}", "status"] },
-            "description": "Advances the order along its state machine. Valid values: pending, assigned, picked_up, in_transit, delivered, cancelled. picked_up is only accepted once the order is assigned."
+            "description": "Advances the order along its state machine, sent as the assigned courier ({{assignedCourierToken}}). Valid values: picked_up, in_transit, delivered, in that order; edit the body and re-send to go further. Only the courier the order was assigned to can advance it; a customer gets 403."
           }
         },
         {
@@ -230,11 +269,11 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"latitude\": 41.0375,\n  \"longitude\": 28.9855\n}",
+              "raw": "{\n  \"latitude\": 40.8500,\n  \"longitude\": 29.3000\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": { "raw": "{{baseUrl}}/location/update", "host": ["{{baseUrl}}"], "path": ["location", "update"] },
-            "description": "Records a position for the registered courier ({{courierToken}}). Writes a PostGIS point and a Redis shadow, and emits a location event."
+            "description": "Records a position for the registered courier ({{courierToken}}), some 30 km from the seeded pickup so it never takes the seeded orders. Writes a PostGIS point and a Redis shadow, and emits a location event."
           }
         },
         {
@@ -281,6 +320,20 @@
           }
         }
       ]
+    },
+    {
+      "name": "Sign out",
+      "item": [
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/auth/logout", "host": ["{{baseUrl}}"], "path": ["auth", "logout"] },
+            "description": "Blocklists the current token's jti until it would have expired. Kept last because every request above needs the customer token."
+          }
+        }
+      ]
     }
   ],
   "variable": [
@@ -292,6 +345,10 @@
     { "key": "courierId", "value": "" },
     { "key": "customerEmail", "value": "" },
     { "key": "customerPassword", "value": "Passw0rd!" },
-    { "key": "courierPassword", "value": "Passw0rd!" }
+    { "key": "courierPassword", "value": "Passw0rd!" },
+    { "key": "assignedCourierId", "value": "" },
+    { "key": "assignedCourierEmail", "value": "" },
+    { "key": "assignedCourierToken", "value": "" },
+    { "key": "seedPassword", "value": "demo-password" }
   ]
 }
