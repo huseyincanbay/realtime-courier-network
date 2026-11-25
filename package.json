@@ -22,6 +22,7 @@
     "start:infra": "docker compose up -d postgres redis rabbitmq",
     "stop:infra": "docker compose down",
     "seed": "bash scripts/seed.sh",
+    "track": "node scripts/track.mjs",
     "test": "vitest run",
     "format": "prettier --write \"{apps,packages}/**/*.ts\""
   },
