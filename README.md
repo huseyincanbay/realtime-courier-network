@@ -27,9 +27,9 @@ lock, and the WebSocket auth checks.
 |---|---|---|
 | gateway | 4000 | Single entry point. Validates the JWT (cached in Redis, behind a circuit breaker), enforces idempotency on writes, proxies to the rest. |
 | auth | 3001, gRPC 50052 | Register / login / logout, JWT issuance, a Redis token blocklist, and per-account login lockout. Other services validate tokens against it over gRPC. |
-| orders | 3002 | Order lifecycle and its state machine. Publishes domain events through an outbox; projects `order.assigned` back onto its own table. |
-| location | 3003, gRPC 50051 | Courier positions in a PostGIS `geography` column with a spatial index. Answers "who is near this point" over gRPC. |
-| dispatch | 3005 | A worker, not an API. Consumes new orders, picks the nearest online courier, locks it, and assigns — or schedules a retry when nobody is around. |
+| orders | 3002 | Order lifecycle and its state machine. Publishes domain events through an outbox; projects dispatch's outcome (`order.assigned` or `order.dispatch.failed`) back onto its own table. |
+| location | 3003, gRPC 50051 | Each courier's current position in a PostGIS `geography` column with a spatial index. Answers "who is near this point" over gRPC. |
+| dispatch | 3005 | A worker, not an API. Consumes new orders, picks the nearest online courier, locks it, and assigns — or schedules a retry when nobody is around, and marks the order `dispatch_failed` after the third attempt. Frees the courier on delivery or cancel. |
 | realtime | 3004 | The WebSocket layer. Authenticates on the handshake, then pushes order and location updates to the customers watching. |
 
 Three shared packages back them: `types` (event contracts and the RabbitMQ
@@ -74,6 +74,7 @@ sequenceDiagram
     else nobody nearby
         D-)MQ: retry queue — 30s TTL, dead-letters back
         Note over D,MQ: no in-process timer —<br/>the delay lives in the broker
+        D-)MQ: order.dispatch.failed (after 3 attempts)
     end
 ```
 
@@ -83,16 +84,17 @@ A few forks in the road, and why this branch:
 
 **Outbox over dual-write.** The database and the broker are two systems you can't
 commit to atomically. The event goes into the same transaction as the state
-change and a separate publisher ships it, so an order can never exist with no
-event to dispatch it.
+change and a separate publisher ships it, marking it sent only once the broker
+confirms — so an order can never exist with no event to dispatch it.
 
 **A broker-driven retry over an in-process scheduler.** Delayed retries live in a
 consumer-less queue with a message TTL that dead-letters back to the working
 queue — durable across restarts, with no `setTimeout` to lose.
 
-**A hand-rolled circuit breaker over a library.** About forty lines with no
-dependency, around every call that leaves a service: five failures and it opens,
-failing fast for thirty seconds before letting one probe through.
+**A hand-rolled circuit breaker over a library.** Under a hundred lines with no
+dependency, around every gRPC call: five failures and it opens, failing fast for
+thirty seconds; then it goes half-open, where one success closes it and one
+failure opens it again.
 
 **gRPC for the synchronous calls, RabbitMQ for the rest.** Typed contracts where
 a caller genuinely waits for an answer (token validation, "who's nearby"); a
@@ -114,7 +116,7 @@ redelivered event does no harm.
 The ordinary-but-necessary pieces sit under the same rules: refresh-free JWTs
 with a Redis blocklist and login lockout, idempotency keyed by user and route,
 structured JSON logs carrying a request id across every service, and production
-guards that refuse to boot on a dev secret or with schema auto-sync left on.
+guards that refuse to boot on a dev secret and force schema auto-sync off.
 
 ## Running it
 
@@ -133,11 +135,16 @@ development and hard-off in production. RabbitMQ loads its full topology
 definitions file at startup, so there is nothing to set up by hand.
 
 Once the services are up, seed a few online couriers so dispatch has someone
-to assign — without it a new order stays `pending` with nobody to match it:
+to assign — without it a new order finds nobody and, once its retries run out,
+ends as `dispatch_failed`:
 
 ```
 pnpm seed
 ```
+
+The seed also gives each courier a login (`courier1@rcn.dev` to
+`courier5@rcn.dev`) and adds `admin@rcn.dev`, all with the password
+`demo-password`, so you can act as whichever courier an order went to.
 
 Run them individually if you prefer:
 
@@ -190,7 +197,7 @@ between requests, is in the
 }
 ```
 
-→ `201`, returning `{ "user": { "id": "…", "role": "customer" }, "accessToken": "eyJ…" }`.
+→ `201`, returning `{ "user": { "id": "…", "email": "customer@example.com", "role": "customer" }, "accessToken": "eyJ…" }`.
 
 **Place an order** — `POST /api/v1/orders` with `Authorization: Bearer <token>`
 
@@ -209,7 +216,8 @@ between requests, is in the
 ```json
 {
   "id": "22222222-2222-4222-8222-222222222222",
-  "orderNumber": "ORD-MK3P8Q2Z",
+  "orderNumber": "ORD-MK3P8Q2Z-4F9A1C",
+  "customerId": "11111111-1111-4111-8111-111111111111",
   "status": "pending",
   "priority": "normal",
   "pickupLat": 41.037,
@@ -224,7 +232,21 @@ between requests, is in the
 reads `"status": "assigned"` with `"courierId": "a0000000-…-03"` filled in:
 dispatch found the nearest online courier, locked it, and the assignment
 propagated back onto the order's own record. That one field change is the whole
-asynchronous path.
+asynchronous path. With nobody in range — try a pickup at `10.0, 10.0` — it reads
+`dispatch_failed` instead, about a minute and three attempts later.
+
+**Deliver it** — only the courier an order went to can advance it, and the seed
+gave that courier a login: an id ending in `03` is `courier3@rcn.dev`. Log in
+with `POST /api/v1/auth/login`, then send `PATCH /api/v1/orders/{id}/status` with
+the courier's token, once for each step:
+
+```json
+{ "status": "picked_up" }
+```
+
+`in_transit` and `delivered` follow the same way. On `delivered`, dispatch
+releases its lock and the courier is free for the next order. A customer token
+gets `403` here.
 
 ## Deliberately out of scope
 
