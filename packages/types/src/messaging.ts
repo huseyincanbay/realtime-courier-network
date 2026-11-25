@@ -20,6 +20,7 @@ export const ROUTING_KEYS = {
   ORDER_STATUS_UPDATED: 'order.status.updated',
   ORDER_ASSIGNED: 'order.assigned',
   ORDER_CANCELLED: 'order.cancelled',
+  ORDER_DISPATCH_FAILED: 'order.dispatch.failed',
   DISPATCH_RETRY: 'dispatch.retry',
   COURIER_LOCATION_UPDATED: 'courier.location.updated',
 } as const;
@@ -29,5 +30,6 @@ export const EVENT_VERSIONS = {
   ORDER_STATUS_UPDATED: 1,
   ORDER_ASSIGNED: 1,
   ORDER_CANCELLED: 1,
+  ORDER_DISPATCH_FAILED: 1,
   COURIER_LOCATION_UPDATED: 1,
 } as const;

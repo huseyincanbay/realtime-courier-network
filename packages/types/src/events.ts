@@ -3,7 +3,6 @@ import { OrderStatus } from './enums';
 export interface BaseEvent {
   version: number;
   timestamp: string;
-  correlationId?: string;
 }
 
 export interface OrderCreatedEvent extends BaseEvent {
@@ -39,6 +38,12 @@ export interface OrderCancelledEvent extends BaseEvent {
   reason: string;
 }
 
+export interface OrderDispatchFailedEvent extends BaseEvent {
+  type: 'order.dispatch.failed';
+  orderId: string;
+  attempts: number;
+}
+
 export interface CourierLocationUpdatedEvent extends BaseEvent {
   type: 'courier.location.updated';
   courierId: string;
@@ -48,10 +53,3 @@ export interface CourierLocationUpdatedEvent extends BaseEvent {
   heading?: number;
   speed?: number;
 }
-
-export type DispatchEvent =
-  | OrderCreatedEvent
-  | OrderAssignedEvent
-  | OrderStatusUpdatedEvent
-  | OrderCancelledEvent
-  | CourierLocationUpdatedEvent;

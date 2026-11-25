@@ -22,22 +22,11 @@ export enum OrderStatus {
   IN_TRANSIT = 'in_transit',
   DELIVERED = 'delivered',
   CANCELLED = 'cancelled',
+  DISPATCH_FAILED = 'dispatch_failed',
 }
 
 export enum DeliveryPriority {
   NORMAL = 'normal',
   HIGH = 'high',
   URGENT = 'urgent',
-}
-
-export enum CourierStatus {
-  AVAILABLE = 'available',
-  BUSY = 'busy',
-  OFFLINE = 'offline',
-}
-
-export enum VehicleType {
-  BICYCLE = 'bicycle',
-  MOTORCYCLE = 'motorcycle',
-  CAR = 'car',
 }
