@@ -17,30 +17,59 @@ distributed-systems plumbing that makes that reliable.
 - **PostGIS geospatial search** — nearest online courier over a spatial index
 - **WebSocket handshake auth + idempotent writes**
 
-gRPC carries the synchronous calls, RabbitMQ everything asynchronous; Postgres
-(with PostGIS) is the source of truth, and Redis holds the caches, the dispatch
-lock, and the WebSocket auth checks.
+## Architecture
 
-## The services
+```mermaid
+graph TB
+    Client["Client"]
+    GW["gateway :4000"]
+
+    subgraph Services
+        Auth["auth :3001"]
+        Orders["orders :3002"]
+        Loc["location :3003"]
+        Dispatch["dispatch :3005<br/>worker"]
+        RT["realtime :3004<br/>WebSocket"]
+    end
+
+    MQ[("RabbitMQ")]
+
+    Client --> GW
+    Client <--> RT
+    GW --> Auth
+    GW --> Orders
+    GW --> Loc
+    GW -. gRPC .-> Auth
+    RT -. gRPC .-> Auth
+    Dispatch -. gRPC .-> Loc
+    Orders -- outbox --> MQ
+    Loc -- outbox --> MQ
+    Dispatch -- outbox --> MQ
+    MQ --> Dispatch
+    MQ --> Orders
+    MQ --> RT
+```
+
+Solid lines are HTTP, dotted lines gRPC, and everything through RabbitMQ is an
+event. Postgres (with PostGIS) is the source of truth, one schema per service;
+Redis holds the token cache, idempotency keys, the courier lock and courier
+presence.
 
 | Service | Port | Role |
 |---|---|---|
 | gateway | 4000 | Single entry point. Validates the JWT (cached in Redis, behind a circuit breaker), enforces idempotency on writes, proxies to the rest. |
-| auth | 3001, gRPC 50052 | Register / login / logout, JWT issuance, a Redis token blocklist, and per-account login lockout. Other services validate tokens against it over gRPC. |
-| orders | 3002 | Order lifecycle and its state machine. Publishes domain events through an outbox; projects dispatch's outcome (`order.assigned` or `order.dispatch.failed`) back onto its own table. |
-| location | 3003, gRPC 50051 | Each courier's current position in a PostGIS `geography` column with a spatial index. Answers "who is near this point" over gRPC. |
-| dispatch | 3005 | A worker, not an API. Consumes new orders, picks the nearest online courier, locks it, and assigns — or schedules a retry when nobody is around, and marks the order `dispatch_failed` after the third attempt. Frees the courier on delivery or cancel. |
-| realtime | 3004 | The WebSocket layer. Authenticates on the handshake, then pushes order and location updates to the customers watching. |
+| auth | 3001, gRPC 50052 | Register / login / logout, JWT issuance, a Redis token blocklist and per-account login lockout. Validates tokens for the others over gRPC. |
+| orders | 3002 | Order lifecycle and its state machine. Publishes events through an outbox and projects dispatch's outcome back onto its own table. |
+| location | 3003, gRPC 50051 | Each courier's current position in a PostGIS `geography` column. Answers "who is near this point" over gRPC. |
+| dispatch | 3005 | A worker, not an API. Locks the nearest online courier and assigns it; retries through the broker when nobody is around and gives up after three attempts. Frees the courier on delivery or cancel. |
+| realtime | 3004 | The WebSocket layer. Authenticates on the handshake, then pushes order and courier updates to whoever is watching the order. |
 
 Three shared packages back them: `types` (event contracts and the RabbitMQ
-topology in one place, so a routing-key typo is a compile error rather than a
-silently dropped message), `runtime` (config, logging, the circuit breaker,
-production guards), and `events` (the RabbitMQ wrapper and the outbox).
+topology, so a wrong routing key or payload field is a compile error rather than
+a silently dropped message), `runtime` (config, logging, the circuit breaker,
+production guards) and `events` (the RabbitMQ wrapper and the outbox).
 
 ## What happens when an order is placed
-
-This is the path a single order takes — the notes on the diagram call out the
-pieces that matter.
 
 ```mermaid
 sequenceDiagram
@@ -80,43 +109,30 @@ sequenceDiagram
 
 ## Key engineering decisions
 
-A few forks in the road, and why this branch:
+**Outbox over dual-write.** The database and the broker cannot be committed to
+atomically, so the event goes into the same transaction as the state change. A
+separate publisher ships it and marks it sent only once the broker confirms.
 
-**Outbox over dual-write.** The database and the broker are two systems you can't
-commit to atomically. The event goes into the same transaction as the state
-change and a separate publisher ships it, marking it sent only once the broker
-confirms — so an order can never exist with no event to dispatch it.
+**Idempotent consumers over exactly-once delivery.** The outbox delivers at
+least once, so consumers take a repeat safely: dispatch skips an attempt it has
+already logged, and orders applies a dispatch outcome with an update that only
+moves an order out of `pending`.
 
-**A broker-driven retry over an in-process scheduler.** Delayed retries live in a
-consumer-less queue with a message TTL that dead-letters back to the working
-queue — durable across restarts, with no `setTimeout` to lose.
+**A broker-driven retry over an in-process scheduler.** Delayed retries wait in
+a consumer-less queue whose message TTL dead-letters them back to the working
+queue: durable across restarts, with no `setTimeout` to lose.
 
 **A hand-rolled circuit breaker over a library.** Under a hundred lines with no
-dependency, around every gRPC call: five failures and it opens, failing fast for
-thirty seconds; then it goes half-open, where one success closes it and one
-failure opens it again.
-
-**gRPC for the synchronous calls, RabbitMQ for the rest.** Typed contracts where
-a caller genuinely waits for an answer (token validation, "who's nearby"); a
-decoupled bus for everything that shouldn't block a request.
-
-**scrypt over bcrypt.** bcrypt's native build was fragile on the Node version in
-use; scrypt ships inside Node's `crypto`, so there is no native compile step and
-the hashing runs async, off the event loop.
+dependency, around every gRPC call. Five failures open it and it fails fast for
+thirty seconds; then one success closes it and one failure opens it again.
 
 **A pessimistic row lock over optimistic versioning.** A status transition reads
 its order `FOR UPDATE` inside the transaction, so two concurrent updates
-serialize instead of racing — without surfacing a version-conflict error to the
-caller.
+serialize instead of racing, with no version-conflict error for the caller.
 
-**Each service owns its data.** orders never lets another service write its
-table; it projects `order.assigned` onto its own read model, idempotently, so a
-redelivered event does no harm.
-
-The ordinary-but-necessary pieces sit under the same rules: refresh-free JWTs
-with a Redis blocklist and login lockout, idempotency keyed by user and route,
-structured JSON logs carrying a request id across every service, and production
-guards that refuse to boot on a dev secret and force schema auto-sync off.
+Also in place: a request id carried from the gateway into the logs of every
+service it calls, idempotency keyed by user and route, and production guards
+that refuse to boot on a dev secret and force schema auto-sync off.
 
 ## Running it
 
@@ -129,77 +145,42 @@ pnpm start:infra      # Postgres, Redis, RabbitMQ
 pnpm dev              # all six services with live reload
 ```
 
-Services create their own tables on first boot — schema sync is on in
-development and hard-off in production. RabbitMQ loads its full topology
-(exchanges, queues, bindings, the dead-letter and retry wiring) from a
-definitions file at startup, so there is nothing to set up by hand.
+There is nothing to set up by hand: services create their tables on first boot
+(schema sync is on in development, forced off in production) and RabbitMQ loads
+its whole topology from a definitions file.
 
-Once the services are up, seed a few online couriers so dispatch has someone
-to assign — without it a new order finds nobody and, once its retries run out,
-ends as `dispatch_failed`:
+Once the services are up, seed from another terminal:
 
 ```
 pnpm seed
 ```
 
-The seed also gives each courier a login (`courier1@rcn.dev` to
-`courier5@rcn.dev`) and adds `admin@rcn.dev`, all with the password
-`demo-password`, so you can act as whichever courier an order went to.
+It puts five online couriers near the demo pickup and gives them logins,
+`courier1@rcn.dev` to `courier5@rcn.dev`, plus `admin@rcn.dev`, all with the
+password `demo-password`. Without it an order finds nobody and ends as
+`dispatch_failed`.
 
-Run them individually if you prefer:
-
-```
-pnpm dev:gateway
-pnpm dev:auth
-pnpm dev:order
-pnpm dev:location
-pnpm dev:dispatch
-pnpm dev:realtime
-```
-
-Or run the whole stack — all six services and the infrastructure — in Docker
-with one command, no local Node required:
+Or run everything in Docker, with no local Node:
 
 ```
 docker compose up --build
 ```
 
-The gateway comes up on the same `:4000`, and `pnpm seed` works against it
-just the same.
-
-## Layout
-
-```
-apps/                 the six services
-packages/
-  types/              event contracts, enums, RabbitMQ topology constants
-  runtime/            config, logging, circuit breaker, prod guards, DB options
-  events/             RabbitMQ wrapper and the transactional outbox
-proto/                gRPC contracts (auth, location)
-infrastructure/
-  docker/             Postgres init, RabbitMQ topology
-```
+The gateway is on the same `:4000`; seed it with `bash scripts/seed.sh`.
 
 ## API by example
 
-A few core calls through the gateway on `/api/v1`; authenticated routes take a
-bearer token from register or login. The full set, with the token chained
-between requests, is in the
-[Postman collection](postman/realtime-courier-network.postman_collection.json).
+Through the gateway. The full set, with tokens chained between requests, is in
+the [Postman collection](postman/realtime-courier-network.postman_collection.json).
 
-**Register** — `POST /api/v1/auth/register`
+**Register** — `POST /api/v1/auth/register` returns `201` and an `accessToken`:
 
 ```json
-{
-  "email": "customer@example.com",
-  "password": "demo-password",
-  "role": "customer"
-}
+{ "email": "customer@example.com", "password": "demo-password", "role": "customer" }
 ```
 
-→ `201`, returning `{ "user": { "id": "…", "email": "customer@example.com", "role": "customer" }, "accessToken": "eyJ…" }`.
-
-**Place an order** — `POST /api/v1/orders` with `Authorization: Bearer <token>`
+**Place an order** — `POST /api/v1/orders` with that token. It comes back `201`
+with `"status": "pending"` and no courier yet:
 
 ```json
 {
@@ -211,62 +192,83 @@ between requests, is in the
 }
 ```
 
-→ `201`, unassigned:
-
-```json
-{
-  "id": "22222222-2222-4222-8222-222222222222",
-  "orderNumber": "ORD-MK3P8Q2Z-4F9A1C",
-  "customerId": "11111111-1111-4111-8111-111111111111",
-  "status": "pending",
-  "priority": "normal",
-  "pickupLat": 41.037,
-  "pickupLng": 28.985,
-  "dropoffLat": 40.99,
-  "dropoffLng": 29.027,
-  "createdAt": "2026-01-15T09:24:11.204Z"
-}
-```
-
-**Follow it** — `GET /api/v1/orders/{id}`. A second or two later the same order
-reads `"status": "assigned"` with `"courierId": "a0000000-…-03"` filled in:
-dispatch found the nearest online courier, locked it, and the assignment
-propagated back onto the order's own record. That one field change is the whole
-asynchronous path. With nobody in range — try a pickup at `10.0, 10.0` — it reads
+**Follow it** — `GET /api/v1/orders/{id}`. A second or two later it reads
+`"status": "assigned"` with `"courierId": "a0000000-…-03"`: dispatch found the
+nearest online courier, locked it, and the assignment propagated back onto the
+order's own record. With nobody in range (try a pickup at `10.0, 10.0`) it reads
 `dispatch_failed` instead, about a minute and three attempts later.
 
 **Deliver it** — only the courier an order went to can advance it, and the seed
 gave that courier a login: an id ending in `03` is `courier3@rcn.dev`. Log in
-with `POST /api/v1/auth/login`, then send `PATCH /api/v1/orders/{id}/status` with
-the courier's token, once for each step:
+with `POST /api/v1/auth/login`, then send `PATCH /api/v1/orders/{id}/status`
+with the courier's token, once each for `picked_up`, `in_transit` and
+`delivered`:
 
 ```json
 { "status": "picked_up" }
 ```
 
-`in_transit` and `delivered` follow the same way. On `delivered`, dispatch
-releases its lock and the courier is free for the next order. A customer token
-gets `403` here.
+On `delivered`, dispatch releases its lock and the courier is free for the next
+order. A customer token gets `403` here.
+
+## Watching it live
+
+The realtime service speaks Socket.IO on port 3004, namespace `/ws`. It reads
+the bearer token from the handshake (`auth.token`) and refuses the connection
+without a valid one. From then on it pushes:
+
+| Event | When | Goes to |
+|---|---|---|
+| `order:created` | an order is placed | the customer |
+| `order:assigned` | dispatch locks a courier | the order's room |
+| `courier:location` | the assigned courier reports a position | the order's room |
+| `order:status` | the courier advances the order | the order's room |
+| `order:cancelled`, `order:dispatch_failed` | the order ends without a delivery | the order's room |
+
+A socket joins an order's room by emitting `subscribe:order` with
+`{ "orderId": "…" }`; only that order's customer and courier (or an admin) are
+let in.
+
+To watch it without writing a client, leave this running in a second terminal
+and work through the calls above:
+
+```
+pnpm track customer@example.com demo-password
+```
+
+It logs in, connects, subscribes to each order as it appears, and prints
+whatever arrives:
+
+```
+21:11:09 order:created {"orderId":"2222…","status":"pending"}
+21:11:09 subscribed {"orderId":"2222…"}
+21:11:11 order:assigned {"orderId":"2222…","courierId":"a0000000-…-03","etaMinutes":1}
+21:11:14 courier:location {"courierId":"a0000000-…-03","lat":41.0381,"lng":28.9831}
+21:11:15 order:status {"orderId":"2222…","newStatus":"picked_up"}
+```
+
+`courier:location` appears once the assigned courier reports a position with
+`POST /api/v1/location/update`. A seeded courier that does so is no longer
+pinned as online and ages out like a real one until the next `pnpm seed`.
 
 ## Deliberately out of scope
 
-A study reads more clearly for staying small, so some things are left out on
-purpose — each with an obvious production home:
+Left out on purpose, each with an obvious production home:
 
-- **Metrics dashboards.** Observability here is correlation IDs across
-  structured logs; a Prometheus/Grafana stack would repeat ground a separate
-  telemetry project already covers.
+- **Metrics dashboards.** Observability here is structured logs with a request
+  id; a Prometheus/Grafana stack would repeat ground a separate telemetry
+  project already covers.
 - **Refresh-token rotation and OAuth.** Auth issues one short-lived token with a
-  Redis `jti` blocklist and login lockout — revocation, the hard half, is done;
+  Redis `jti` blocklist and login lockout. Revocation, the hard half, is done;
   rotation is the production extension.
 - **Pagination.** List endpoints cap at 50; keyset pagination is where this
   grows under real volume.
 - **Multi-node and Kubernetes.** Everything runs on a single node. What scales
   is the design — the outbox, the locks, the idempotent consumers — not this
   compose file.
-- **Broad test coverage.** The pure core — the circuit breaker and the order
-  state machine — is unit-tested; wider integration and end-to-end suites are
-  left for a real deployment.
+- **Broad test coverage.** The pure core, the circuit breaker and the order
+  state machine, is unit-tested; integration and end-to-end suites are left for
+  a real deployment.
 
 ## License
 
