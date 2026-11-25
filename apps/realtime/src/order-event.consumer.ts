@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { RabbitMQService } from '@rcn/events';
-import { QUEUES } from '@rcn/types';
+import { OrderStatus, QUEUES } from '@rcn/types';
 import { TrackingGateway } from './tracking.gateway';
 import { RedisService } from './redis.service';
 
@@ -48,13 +48,20 @@ export class OrderEventConsumer implements OnModuleInit {
         });
         break;
       case 'order.status.updated':
+        if (msg.newStatus === OrderStatus.DELIVERED) {
+          await this.membership.forgetCourier(orderId);
+        }
         this.gateway.emitToOrder(orderId, 'order:status', {
           orderId,
           newStatus: msg.newStatus,
         });
         break;
       case 'order.cancelled':
+        await this.membership.forgetCourier(orderId);
         this.gateway.emitToOrder(orderId, 'order:cancelled', { orderId });
+        break;
+      case 'order.dispatch.failed':
+        this.gateway.emitToOrder(orderId, 'order:dispatch_failed', { orderId });
         break;
     }
   }

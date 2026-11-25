@@ -30,6 +30,13 @@ export class RedisService implements OnModuleDestroy {
     await this.client.setex(`realtime:courier:${courierId}`, this.ttl, orderId);
   }
 
+  async forgetCourier(orderId: string): Promise<void> {
+    const courierId = await this.client.hget(this.orderKey(orderId), 'courierId');
+    if (!courierId) return;
+    const key = `realtime:courier:${courierId}`;
+    if ((await this.client.get(key)) === orderId) await this.client.del(key);
+  }
+
   private async writeField(orderId: string, field: string, value: string): Promise<void> {
     await this.client
       .multi()
