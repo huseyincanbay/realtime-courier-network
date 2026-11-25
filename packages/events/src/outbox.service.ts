@@ -47,14 +47,12 @@ export class OutboxService implements OnModuleDestroy {
       take: 50,
     });
     for (const evt of pending) {
-      const ok = await this.rabbit.publish(
+      await this.rabbit.publish(
         { exchange: evt.exchange, routingKey: evt.routingKey },
         evt.payload,
       );
-      if (ok) {
-        evt.publishedAt = new Date();
-        await this.repo.save(evt);
-      }
+      evt.publishedAt = new Date();
+      await this.repo.save(evt);
     }
   }
 

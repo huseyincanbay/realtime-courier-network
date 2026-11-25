@@ -22,7 +22,7 @@ type Handler = (
 export class RabbitMQService implements OnModuleDestroy {
   private readonly logger = new Logger(RabbitMQService.name);
   private connection: amqp.ChannelModel | null = null;
-  private channel: amqp.Channel | null = null;
+  private channel: amqp.ConfirmChannel | null = null;
   private url = '';
   private closing = false;
   private reconnectDelay = 1000;
@@ -36,7 +36,7 @@ export class RabbitMQService implements OnModuleDestroy {
 
   private async establish(): Promise<void> {
     this.connection = await amqp.connect(this.url);
-    this.channel = await this.connection.createChannel();
+    this.channel = await this.connection.createConfirmChannel();
     this.reconnectDelay = 1000;
     this.logger.log('Connected to RabbitMQ');
     this.connection.on('error', (err: Error) => {
@@ -76,13 +76,17 @@ export class RabbitMQService implements OnModuleDestroy {
     this.logger.log(`Reconnected — ${this.consumers.length} consumer(s) restored`);
   }
 
-  async publish<T>(opts: PublishOptions, payload: T): Promise<boolean> {
-    if (!this.channel) throw new Error('RabbitMQ channel not available');
-    return this.channel.publish(
-      opts.exchange,
-      opts.routingKey,
-      Buffer.from(JSON.stringify(payload)),
-      { persistent: opts.persistent ?? true, contentType: 'application/json' },
+  async publish<T>(opts: PublishOptions, payload: T): Promise<void> {
+    const channel = this.channel;
+    if (!channel) throw new Error('RabbitMQ channel not available');
+    await new Promise<void>((resolve, reject) =>
+      channel.publish(
+        opts.exchange,
+        opts.routingKey,
+        Buffer.from(JSON.stringify(payload)),
+        { persistent: opts.persistent ?? true, contentType: 'application/json' },
+        (err) => (err ? reject(err) : resolve()),
+      ),
     );
   }
 
