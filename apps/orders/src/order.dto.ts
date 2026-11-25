@@ -1,5 +1,6 @@
 import {
   IsEnum,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -27,7 +28,7 @@ export class CreateOrderDto {
 }
 
 export class UpdateStatusDto {
-  @IsEnum(OrderStatus)
+  @IsIn([OrderStatus.PICKED_UP, OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED])
   status: OrderStatus;
 }
 

@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { RabbitMQService } from '@rcn/events';
-import { QUEUES } from '@rcn/types';
+import { OrderStatus, QUEUES } from '@rcn/types';
 import { OrdersService } from './orders.service';
 
 @Injectable()
@@ -17,11 +17,16 @@ export class OrderProjectionConsumer implements OnModuleInit {
       { queue: QUEUES.ORDER_PROJECTION, prefetch: 10 },
       async (msg, ack, nack) => {
         try {
+          const orderId = msg.orderId as string;
           if (msg.type === 'order.assigned') {
-            await this.orders.markAssignedFromDispatch(
-              msg.orderId as string,
-              msg.courierId as string,
-            );
+            await this.orders.projectDispatchOutcome(orderId, {
+              status: OrderStatus.ASSIGNED,
+              courierId: msg.courierId as string,
+            });
+          } else if (msg.type === 'order.dispatch.failed') {
+            await this.orders.projectDispatchOutcome(orderId, {
+              status: OrderStatus.DISPATCH_FAILED,
+            });
           }
           ack();
         } catch (err) {
