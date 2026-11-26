@@ -5,3 +5,4 @@
 .env
 *.log
 scratchpad
+sim/results

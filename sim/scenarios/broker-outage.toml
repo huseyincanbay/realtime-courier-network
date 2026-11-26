@@ -1,0 +1,30 @@
+name = "broker-outage"
+seed = 13
+warmup_s = 6
+drain_s = 45
+customers = 10
+
+[region]
+lat = 40.1885
+lng = 29.0610
+radius_m = 2000
+
+[couriers]
+count = 30
+speed_mps = 150
+tick_s = 2
+pickup_wait_s = 2
+
+[[demand]]
+for_s = 90
+orders_per_s = 0.8
+
+[[faults]]
+at_s = 30
+action = "stop"
+target = "rabbitmq"
+
+[[faults]]
+at_s = 45
+action = "start"
+target = "rabbitmq"

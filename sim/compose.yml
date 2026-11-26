@@ -1,0 +1,20 @@
+services:
+  gateway:
+    environment:
+      RATE_LIMIT_PER_MIN: 1000000
+
+  sim:
+    build: ./sim
+    profiles: ['sim']
+    environment:
+      GATEWAY_URL: http://gateway:4000/api/v1
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: dispatch
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./sim/scenarios:/sim/scenarios:ro
+      - ./sim/results:/results

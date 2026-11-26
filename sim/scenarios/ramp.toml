@@ -1,0 +1,28 @@
+name = "ramp"
+seed = 11
+warmup_s = 6
+drain_s = 75
+customers = 10
+
+[region]
+lat = 38.4237
+lng = 27.1428
+radius_m = 2000
+
+[couriers]
+count = 30
+speed_mps = 150
+tick_s = 2
+pickup_wait_s = 2
+
+[[demand]]
+for_s = 40
+orders_per_s = 0.6
+
+[[demand]]
+for_s = 40
+orders_per_s = 1.2
+
+[[demand]]
+for_s = 40
+orders_per_s = 1.8

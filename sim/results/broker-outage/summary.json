@@ -1,0 +1,196 @@
+{
+  "scenario": {
+    "name": "broker-outage",
+    "seed": 13,
+    "warmup_s": 6,
+    "drain_s": 45,
+    "customers": 10,
+    "region": {
+      "lat": 40.1885,
+      "lng": 29.061,
+      "radius_m": 2000
+    },
+    "couriers": {
+      "count": 30,
+      "speed_mps": 150,
+      "tick_s": 2,
+      "pickup_wait_s": 2
+    },
+    "demand": [
+      {
+        "for_s": 90,
+        "orders_per_s": 0.8
+      }
+    ],
+    "hot_zones": [],
+    "faults": [
+      {
+        "at_s": 30,
+        "action": "stop",
+        "target": "rabbitmq"
+      },
+      {
+        "at_s": 45,
+        "action": "start",
+        "target": "rabbitmq"
+      }
+    ]
+  },
+  "run": {
+    "started_at": "2026-11-26T19:22:11+00:00",
+    "commit": "d534173-dirty",
+    "host": {
+      "cpus": 10,
+      "memory_gb": 7.7,
+      "architecture": "aarch64",
+      "os": "Docker Desktop",
+      "docker": "29.9.3"
+    }
+  },
+  "generator": {
+    "scheduled": 74,
+    "accepted": 74,
+    "schedule_lag_ms": {
+      "count": 74,
+      "p50": 1.8,
+      "p95": 5.9,
+      "max": 7.0
+    }
+  },
+  "orders": {
+    "created": 74,
+    "assigned": 74,
+    "delivered": 74,
+    "dispatch_failed": 0,
+    "pending": 0,
+    "in_progress": 0,
+    "assignment_rate": 1.0,
+    "assigned_on_first_attempt": 61
+  },
+  "time_to_assign_s": {
+    "count": 74,
+    "p50": 2.48,
+    "p95": 30.829,
+    "max": 31.237
+  },
+  "pickup_distance_m": {
+    "count": 74,
+    "p50": 534.0,
+    "p95": 1732.0,
+    "max": 2544.0
+  },
+  "order_to_delivery_s": {
+    "count": 74,
+    "p50": 31.721,
+    "p95": 54.974,
+    "max": 59.995
+  },
+  "outbox_publish_lag_s": {
+    "orders": {
+      "count": 296,
+      "p50": 0.616,
+      "p95": 24.437,
+      "max": 31.234
+    },
+    "locations": {
+      "count": 2115,
+      "p50": 0.747,
+      "p95": 26.728,
+      "max": 31.994
+    },
+    "dispatch": {
+      "count": 74,
+      "p50": 0.968,
+      "p95": 1.016,
+      "max": 1.021
+    }
+  },
+  "api_ms": {
+    "create_order": {
+      "count": 74,
+      "p50": 5.8,
+      "p95": 15.4,
+      "max": 24.0,
+      "errors": 0
+    },
+    "list_orders": {
+      "count": 1343,
+      "p50": 3.0,
+      "p95": 5.6,
+      "max": 50.7,
+      "errors": 0
+    },
+    "nearby": {
+      "count": 1,
+      "p50": 5.2,
+      "p95": 5.2,
+      "max": 5.2,
+      "errors": 0
+    },
+    "register": {
+      "count": 40,
+      "p50": 115.0,
+      "p95": 177.5,
+      "max": 196.5,
+      "errors": 0
+    },
+    "report_location": {
+      "count": 2115,
+      "p50": 5.8,
+      "p95": 12.9,
+      "max": 61.4,
+      "errors": 0
+    },
+    "set_status": {
+      "count": 222,
+      "p50": 4.4,
+      "p95": 9.4,
+      "max": 15.9,
+      "errors": 0
+    }
+  },
+  "steps": [
+    {
+      "orders_per_s": 0.8,
+      "for_s": 90,
+      "created": 74,
+      "assigned": 74,
+      "delivered": 74,
+      "dispatch_failed": 0,
+      "pending": 0,
+      "in_progress": 0,
+      "assignment_rate": 1.0,
+      "assigned_on_first_attempt": 61,
+      "time_to_assign_s": {
+        "count": 74,
+        "p50": 2.48,
+        "p95": 30.829,
+        "max": 31.237
+      }
+    }
+  ],
+  "outages": [
+    {
+      "target": "rabbitmq",
+      "seconds": 15.0,
+      "orders_accepted": 10,
+      "orders_never_dispatched": 0,
+      "events_published_after_s": 16.824,
+      "orders_dispatched_after_s": {
+        "count": 10,
+        "p50": 16.789,
+        "p95": 16.914,
+        "max": 16.914
+      }
+    }
+  ],
+  "invariants": {
+    "orders_assigned_twice": 0,
+    "couriers_with_overlapping_orders": 0,
+    "orders_left_pending": 0,
+    "accepted_orders_missing": 0,
+    "projection_mismatches": 0,
+    "events_never_published": 0
+  },
+  "passed": true
+}

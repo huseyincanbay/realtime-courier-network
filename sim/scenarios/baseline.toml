@@ -1,0 +1,26 @@
+name = "baseline"
+seed = 7
+warmup_s = 6
+drain_s = 30
+customers = 10
+
+[region]
+lat = 39.9334
+lng = 32.8597
+radius_m = 2000
+
+[couriers]
+count = 30
+speed_mps = 150
+tick_s = 2
+pickup_wait_s = 2
+
+[[demand]]
+for_s = 120
+orders_per_s = 0.8
+
+[[hot_zones]]
+lat = 39.9208
+lng = 32.8541
+radius_m = 400
+weight = 0.3

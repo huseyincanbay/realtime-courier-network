@@ -25,3 +25,6 @@ coverage/
 
 # Internal planning docs (not for public repo)
 LEAN_CHARTER.md
+
+sim/results/**/orders.csv
+__pycache__/

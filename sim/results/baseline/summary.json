@@ -1,0 +1,178 @@
+{
+  "scenario": {
+    "name": "baseline",
+    "seed": 7,
+    "warmup_s": 6,
+    "drain_s": 30,
+    "customers": 10,
+    "region": {
+      "lat": 39.9334,
+      "lng": 32.8597,
+      "radius_m": 2000
+    },
+    "couriers": {
+      "count": 30,
+      "speed_mps": 150,
+      "tick_s": 2,
+      "pickup_wait_s": 2
+    },
+    "demand": [
+      {
+        "for_s": 120,
+        "orders_per_s": 0.8
+      }
+    ],
+    "hot_zones": [
+      {
+        "lat": 39.9208,
+        "lng": 32.8541,
+        "radius_m": 400,
+        "weight": 0.3
+      }
+    ],
+    "faults": []
+  },
+  "run": {
+    "started_at": "2026-11-26T19:16:03+00:00",
+    "commit": "d534173-dirty",
+    "host": {
+      "cpus": 10,
+      "memory_gb": 7.7,
+      "architecture": "aarch64",
+      "os": "Docker Desktop",
+      "docker": "29.9.3"
+    }
+  },
+  "generator": {
+    "scheduled": 85,
+    "accepted": 85,
+    "schedule_lag_ms": {
+      "count": 85,
+      "p50": 1.4,
+      "p95": 5.6,
+      "max": 6.1
+    }
+  },
+  "orders": {
+    "created": 85,
+    "assigned": 85,
+    "delivered": 83,
+    "dispatch_failed": 0,
+    "pending": 0,
+    "in_progress": 2,
+    "assignment_rate": 1.0,
+    "assigned_on_first_attempt": 85
+  },
+  "time_to_assign_s": {
+    "count": 85,
+    "p50": 0.526,
+    "p95": 0.966,
+    "max": 1.06
+  },
+  "pickup_distance_m": {
+    "count": 85,
+    "p50": 586.0,
+    "p95": 1847.0,
+    "max": 2070.0
+  },
+  "order_to_delivery_s": {
+    "count": 83,
+    "p50": 24.772,
+    "p95": 35.149,
+    "max": 41.028
+  },
+  "outbox_publish_lag_s": {
+    "orders": {
+      "count": 338,
+      "p50": 0.536,
+      "p95": 0.982,
+      "max": 1.028
+    },
+    "locations": {
+      "count": 2340,
+      "p50": 0.51,
+      "p95": 0.951,
+      "max": 1.012
+    },
+    "dispatch": {
+      "count": 85,
+      "p50": 0.969,
+      "p95": 1.04,
+      "max": 1.042
+    }
+  },
+  "api_ms": {
+    "create_order": {
+      "count": 85,
+      "p50": 6.3,
+      "p95": 14.6,
+      "max": 37.8,
+      "errors": 0
+    },
+    "list_orders": {
+      "count": 1393,
+      "p50": 3.6,
+      "p95": 6.2,
+      "max": 41.9,
+      "errors": 0
+    },
+    "nearby": {
+      "count": 1,
+      "p50": 35.2,
+      "p95": 35.2,
+      "max": 35.2,
+      "errors": 0
+    },
+    "register": {
+      "count": 40,
+      "p50": 161.2,
+      "p95": 214.6,
+      "max": 226.8,
+      "errors": 0
+    },
+    "report_location": {
+      "count": 2340,
+      "p50": 8.8,
+      "p95": 13.8,
+      "max": 82.6,
+      "errors": 0
+    },
+    "set_status": {
+      "count": 253,
+      "p50": 6.1,
+      "p95": 10.8,
+      "max": 22.3,
+      "errors": 0
+    }
+  },
+  "steps": [
+    {
+      "orders_per_s": 0.8,
+      "for_s": 120,
+      "created": 85,
+      "assigned": 85,
+      "delivered": 83,
+      "dispatch_failed": 0,
+      "pending": 0,
+      "in_progress": 2,
+      "assignment_rate": 1.0,
+      "assigned_on_first_attempt": 85,
+      "time_to_assign_s": {
+        "count": 85,
+        "p50": 0.526,
+        "p95": 0.966,
+        "max": 1.06
+      }
+    }
+  ],
+  "outages": [],
+  "invariants": {
+    "orders_assigned_twice": 0,
+    "couriers_with_overlapping_orders": 0,
+    "orders_left_pending": 0,
+    "accepted_orders_missing": 0,
+    "projection_mismatches": 0,
+    "events_never_published": 0
+  },
+  "passed": true
+}
