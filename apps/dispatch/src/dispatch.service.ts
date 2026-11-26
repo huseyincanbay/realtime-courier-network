@@ -52,7 +52,7 @@ export class DispatchService {
       payload.pickupLat,
       payload.pickupLng,
       Math.round(radius),
-      10,
+      cfg.candidateLimit,
     );
 
     for (const c of candidates) {

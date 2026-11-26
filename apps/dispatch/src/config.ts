@@ -13,5 +13,6 @@ export default registerAs('app', () => {
     baseRadiusM: parseInt(process.env.DISPATCH_BASE_RADIUS_M ?? '5000', 10),
     maxRadiusM: parseInt(process.env.DISPATCH_MAX_RADIUS_M ?? '15000', 10),
     maxAttempts: parseInt(process.env.DISPATCH_MAX_ATTEMPTS ?? '3', 10),
+    candidateLimit: parseInt(process.env.DISPATCH_CANDIDATE_LIMIT ?? '50', 10),
   };
 });
