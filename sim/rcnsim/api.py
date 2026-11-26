@@ -15,15 +15,19 @@ class Account:
     token: str
 
 
+@dataclass(frozen=True)
+class Sample:
+    at: float
+    seconds: float
+    status: int
+
+
 @dataclass
 class Stats:
-    latencies: dict[str, list[float]] = field(default_factory=dict)
-    statuses: dict[str, dict[int, int]] = field(default_factory=dict)
+    samples: dict[str, list[Sample]] = field(default_factory=dict)
 
-    def record(self, name: str, seconds: float, status: int) -> None:
-        self.latencies.setdefault(name, []).append(seconds)
-        counts = self.statuses.setdefault(name, {})
-        counts[status] = counts.get(status, 0) + 1
+    def record(self, name: str, at: float, seconds: float, status: int) -> None:
+        self.samples.setdefault(name, []).append(Sample(at, seconds, status))
 
 
 class Api:
@@ -45,15 +49,21 @@ class Api:
         path: str,
         token: str | None = None,
         body: dict[str, Any] | None = None,
+        key: str | None = None,
     ) -> httpx.Response | None:
-        headers = {"authorization": f"Bearer {token}"} if token else {}
+        headers: dict[str, str] = {}
+        if token:
+            headers["authorization"] = f"Bearer {token}"
+        if key:
+            headers["idempotency-key"] = key
+        at = time.time()
         started = time.monotonic()
         try:
             response = await self._http.request(method, path, json=body, headers=headers)
         except httpx.HTTPError:
-            self._stats.record(name, time.monotonic() - started, 0)
+            self._stats.record(name, at, time.monotonic() - started, 0)
             return None
-        self._stats.record(name, time.monotonic() - started, response.status_code)
+        self._stats.record(name, at, time.monotonic() - started, response.status_code)
         return response
 
     async def register(self, email: str, password: str, role: str) -> Account | None:
@@ -64,14 +74,16 @@ class Api:
         data = response.json()
         return Account(id=data["user"]["id"], token=data["accessToken"])
 
-    async def create_order(self, token: str, pickup: Point, dropoff: Point) -> str | None:
+    async def create_order(
+        self, token: str, pickup: Point, dropoff: Point, key: str | None = None
+    ) -> str | None:
         body = {
             "pickupLat": pickup.lat,
             "pickupLng": pickup.lng,
             "dropoffLat": dropoff.lat,
             "dropoffLng": dropoff.lng,
         }
-        response = await self._call("create_order", "POST", "/orders", token, body)
+        response = await self._call("create_order", "POST", "/orders", token, body, key)
         if response is None or response.status_code != 201:
             return None
         order_id: str = response.json()["id"]

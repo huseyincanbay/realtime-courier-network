@@ -1,0 +1,30 @@
+name = "dispatch-kill"
+seed = 17
+warmup_s = 6
+drain_s = 45
+customers = 10
+
+[region]
+lat = 36.8969
+lng = 30.7133
+radius_m = 2000
+
+[couriers]
+count = 30
+speed_mps = 150
+tick_s = 2
+pickup_wait_s = 2
+
+[[demand]]
+for_s = 90
+orders_per_s = 0.8
+
+[[faults]]
+at_s = 30
+action = "kill"
+target = "dispatch"
+
+[[faults]]
+at_s = 40
+action = "start"
+target = "dispatch"

@@ -1,0 +1,30 @@
+name = "auth-outage"
+seed = 19
+warmup_s = 6
+drain_s = 40
+customers = 10
+
+[region]
+lat = 37.0000
+lng = 35.3213
+radius_m = 2000
+
+[couriers]
+count = 30
+speed_mps = 150
+tick_s = 2
+pickup_wait_s = 2
+
+[[demand]]
+for_s = 165
+orders_per_s = 0.8
+
+[[faults]]
+at_s = 95
+action = "stop"
+target = "auth"
+
+[[faults]]
+at_s = 125
+action = "start"
+target = "auth"

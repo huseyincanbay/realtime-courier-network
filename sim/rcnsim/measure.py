@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from itertools import pairwise
 from typing import Any
 
-from .api import Stats
+from .agents import Ledger
+from .api import Sample, Stats
 from .faults import RESTORE, FaultEvent
 from .scenario import Scenario
 
@@ -207,8 +208,29 @@ def outage_windows(events: Sequence[FaultEvent]) -> list[tuple[str, float, float
     return windows
 
 
+def failed(sample: Sample) -> bool:
+    return not 200 <= sample.status < 300
+
+
+def request_impact(began: float, ended: float, stats: Stats) -> dict[str, Any]:
+    calls = [sample for samples in stats.samples.values() for sample in samples]
+    during = [sample for sample in calls if began <= sample.at <= ended]
+    failures = sorted((s for s in calls if s.at >= began and failed(s)), key=lambda s: s.at)
+    return {
+        "requests_during": len(during),
+        "requests_failed_during": sum(failed(sample) for sample in during),
+        "requests_failed_in_total": len(failures),
+        "failed_request_ms": spread([s.seconds for s in failures], scale=1000.0, digits=1),
+        "first_failure_after_s": round(failures[0].at - began, 1) if failures else None,
+        "last_failure_after_restart_s": round(failures[-1].at - ended, 1) if failures else None,
+    }
+
+
 def outage_report(
-    window: tuple[str, float, float], rows: Sequence[Outcome], events: Sequence[Any]
+    window: tuple[str, float, float],
+    rows: Sequence[Outcome],
+    events: Sequence[Any],
+    stats: Stats,
 ) -> dict[str, Any]:
     target, began, ended = window
     inside = [row for row in rows if began <= row.created <= ended]
@@ -227,16 +249,20 @@ def outage_report(
         ),
         "events_published_after_s": spread(published)["max"],
         "orders_dispatched_after_s": spread(dispatched),
+        **request_impact(began, ended, stats),
     }
 
 
 def api_report(stats: Stats) -> dict[str, Any]:
     report: dict[str, Any] = {}
-    for name, samples in sorted(stats.latencies.items()):
-        counts = stats.statuses[name]
+    for name, samples in sorted(stats.samples.items()):
+        statuses: dict[str, int] = defaultdict(int)
+        for sample in samples:
+            statuses[str(sample.status)] += 1
         report[name] = {
-            **spread(samples, scale=1000.0, digits=1),
-            "errors": sum(count for status, count in counts.items() if not 200 <= status < 300),
+            **spread([sample.seconds for sample in samples], scale=1000.0, digits=1),
+            "errors": sum(failed(sample) for sample in samples),
+            "statuses": dict(sorted(statuses.items())),
         }
     return report
 
@@ -246,8 +272,7 @@ async def measure(
     scenario: Scenario,
     stats: Stats,
     customer_ids: list[str],
-    accepted: list[str],
-    lag: list[float],
+    ledger: Ledger,
     fault_events: list[FaultEvent],
     database_zero: float,
     demand_zero: float,
@@ -281,15 +306,18 @@ async def measure(
         "orders_assigned_twice": sum(row.assignments > 1 for row in rows),
         "couriers_with_overlapping_orders": overlapping_assignments(rows),
         "orders_left_pending": sum(row.status == "pending" for row in rows),
-        "accepted_orders_missing": sum(order_id not in stored for order_id in accepted),
+        "accepted_orders_missing": sum(order_id not in stored for order_id in ledger.accepted),
+        "orders_beyond_requests": max(0, len(rows) - len(ledger.lag)),
+        "keys_with_two_orders": len(ledger.split_keys),
         "projection_mismatches": mismatched_projections(rows),
         "events_never_published": unpublished,
     }
     summary = {
         "generator": {
-            "scheduled": len(lag),
-            "accepted": len(accepted),
-            "schedule_lag_ms": spread(lag, scale=1000.0, digits=1),
+            "scheduled": len(ledger.lag),
+            "requests_per_order": scenario.copies,
+            "accepted": len(ledger.accepted),
+            "schedule_lag_ms": spread(ledger.lag, scale=1000.0, digits=1),
         },
         "orders": order_counts(rows),
         **timings(rows),
@@ -306,7 +334,9 @@ async def measure(
             }
             for index, step in enumerate(scenario.demand)
         ],
-        "outages": [outage_report(window, rows, events) for window in outage_windows(fault_events)],
+        "outages": [
+            outage_report(window, rows, events, stats) for window in outage_windows(fault_events)
+        ],
         "invariants": invariants,
         "passed": not any(invariants.values()),
     }

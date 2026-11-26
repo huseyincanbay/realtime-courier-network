@@ -13,7 +13,7 @@ from pathlib import Path
 import asyncpg
 import httpx
 
-from .agents import drive, place_orders
+from .agents import Ledger, drive, place_orders
 from .api import Account, Api, Stats
 from .faults import Docker, FaultEvent, inject
 from .measure import measure
@@ -93,8 +93,7 @@ async def run(scenario: Scenario) -> int:
         started_at = datetime.now(UTC).isoformat(timespec="seconds")
         database_zero = await database.fetchval("SELECT extract(epoch FROM now())::float8")
         clock = Clock()
-        lag: list[float] = []
-        accepted: list[str] = []
+        ledger = Ledger()
         fault_events: list[FaultEvent] = []
         offset = scenario.warmup_s
         end = offset + scenario.duration_s + scenario.drain_s
@@ -105,7 +104,11 @@ async def run(scenario: Scenario) -> int:
                 group.create_task(
                     drive(api, account, start, scenario.couriers, clock, index * spacing, end)
                 )
-            group.create_task(place_orders(api, customers, schedule, clock, offset, lag, accepted))
+            group.create_task(
+                place_orders(
+                    api, customers, schedule, clock, offset, scenario.copies, run_id, ledger
+                )
+            )
             group.create_task(inject(docker, scenario.faults, clock, offset, fault_events))
         await asyncio.sleep(SETTLE_S)
 
@@ -115,8 +118,7 @@ async def run(scenario: Scenario) -> int:
             scenario,
             stats,
             [account.id for account in customers],
-            accepted,
-            lag,
+            ledger,
             fault_events,
             database_zero,
             demand_zero,

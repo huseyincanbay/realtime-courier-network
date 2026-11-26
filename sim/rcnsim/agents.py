@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 from .api import Account, Api
 from .scenario import Couriers
 from .world import Arrival, Clock, Point, step_towards
+
+RETRY_GAP_S = 0.3
+GIVE_UP = {400, 403, 404}
 
 
 class Phase(Enum):
@@ -24,27 +27,45 @@ class Job:
     dropoff: Point
 
 
+@dataclass
+class Ledger:
+    lag: list[float] = field(default_factory=list)
+    accepted: list[str] = field(default_factory=list)
+    split_keys: list[str] = field(default_factory=list)
+
+
 async def place_orders(
     api: Api,
     customers: list[Account],
     schedule: list[Arrival],
     clock: Clock,
     offset_s: float,
-    lag: list[float],
-    accepted: list[str],
+    copies: int,
+    run_id: str,
+    ledger: Ledger,
 ) -> None:
-    async def place(arrival: Arrival) -> None:
+    delays = [0.0, 0.0, *([RETRY_GAP_S] * copies)][:copies]
+
+    async def send(arrival: Arrival, key: str | None, delay: float) -> str | None:
+        await asyncio.sleep(delay)
         token = customers[arrival.customer].token
-        order_id = await api.create_order(token, arrival.pickup, arrival.dropoff)
-        if order_id is not None:
-            accepted.append(order_id)
+        return await api.create_order(token, arrival.pickup, arrival.dropoff, key)
+
+    async def place(index: int, arrival: Arrival) -> None:
+        key = f"{run_id}-{index}" if copies > 1 else None
+        answers = await asyncio.gather(*(send(arrival, key, delay) for delay in delays))
+        order_ids = {answer for answer in answers if answer is not None}
+        if order_ids:
+            ledger.accepted.append(min(order_ids))
+        if key is not None and len(order_ids) > 1:
+            ledger.split_keys.append(key)
 
     async with asyncio.TaskGroup() as group:
-        for arrival in schedule:
+        for index, arrival in enumerate(schedule):
             due = offset_s + arrival.at_s
             await clock.sleep_until(due)
-            lag.append(clock.now() - due)
-            group.create_task(place(arrival))
+            ledger.lag.append(clock.now() - due)
+            group.create_task(place(index, arrival))
 
 
 async def find_job(api: Api, account: Account) -> Job | None:
@@ -79,7 +100,7 @@ async def drive(
         code = await api.set_status(account.token, job.order_id, status)
         if code == 200:
             return then
-        if 400 <= code < 500:
+        if code in GIVE_UP:
             return Phase.IDLE
         return phase
 

@@ -1,0 +1,21 @@
+name = "retry-storm"
+seed = 23
+warmup_s = 6
+drain_s = 35
+customers = 10
+copies = 3
+
+[region]
+lat = 41.0027
+lng = 39.7168
+radius_m = 2000
+
+[couriers]
+count = 30
+speed_mps = 150
+tick_s = 2
+pickup_wait_s = 2
+
+[[demand]]
+for_s = 60
+orders_per_s = 1.2

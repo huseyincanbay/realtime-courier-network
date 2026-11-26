@@ -5,6 +5,7 @@
     "warmup_s": 6,
     "drain_s": 45,
     "customers": 10,
+    "copies": 1,
     "region": {
       "lat": 40.1885,
       "lng": 29.061,
@@ -37,8 +38,8 @@
     ]
   },
   "run": {
-    "started_at": "2026-11-26T19:22:11+00:00",
-    "commit": "d534173-dirty",
+    "started_at": "2026-11-26T20:03:45+00:00",
+    "commit": "f1e1a17-dirty",
     "host": {
       "cpus": 10,
       "memory_gb": 7.7,
@@ -49,12 +50,13 @@
   },
   "generator": {
     "scheduled": 74,
+    "requests_per_order": 1,
     "accepted": 74,
     "schedule_lag_ms": {
       "count": 74,
-      "p50": 1.8,
-      "p95": 5.9,
-      "max": 7.0
+      "p50": 1.4,
+      "p95": 5.5,
+      "max": 6.1
     }
   },
   "orders": {
@@ -69,84 +71,102 @@
   },
   "time_to_assign_s": {
     "count": 74,
-    "p50": 2.48,
-    "p95": 30.829,
-    "max": 31.237
+    "p50": 2.628,
+    "p95": 30.989,
+    "max": 31.487
   },
   "pickup_distance_m": {
     "count": 74,
-    "p50": 534.0,
+    "p50": 545.0,
     "p95": 1732.0,
-    "max": 2544.0
+    "max": 2374.0
   },
   "order_to_delivery_s": {
     "count": 74,
-    "p50": 31.721,
-    "p95": 54.974,
-    "max": 59.995
+    "p50": 30.706,
+    "p95": 54.94,
+    "max": 60.259
   },
   "outbox_publish_lag_s": {
     "orders": {
       "count": 296,
-      "p50": 0.616,
-      "p95": 24.437,
-      "max": 31.234
+      "p50": 0.603,
+      "p95": 25.308,
+      "max": 31.39
     },
     "locations": {
       "count": 2115,
-      "p50": 0.747,
-      "p95": 26.728,
-      "max": 31.994
+      "p50": 0.749,
+      "p95": 26.725,
+      "max": 32.052
     },
     "dispatch": {
       "count": 74,
-      "p50": 0.968,
-      "p95": 1.016,
-      "max": 1.021
+      "p50": 0.083,
+      "p95": 0.977,
+      "max": 1.023
     }
   },
   "api_ms": {
     "create_order": {
       "count": 74,
-      "p50": 5.8,
-      "p95": 15.4,
-      "max": 24.0,
-      "errors": 0
+      "p50": 7.3,
+      "p95": 14.3,
+      "max": 51.0,
+      "errors": 0,
+      "statuses": {
+        "201": 74
+      }
     },
     "list_orders": {
-      "count": 1343,
-      "p50": 3.0,
-      "p95": 5.6,
-      "max": 50.7,
-      "errors": 0
+      "count": 1334,
+      "p50": 3.8,
+      "p95": 6.7,
+      "max": 57.7,
+      "errors": 0,
+      "statuses": {
+        "200": 1334
+      }
     },
     "nearby": {
       "count": 1,
-      "p50": 5.2,
-      "p95": 5.2,
-      "max": 5.2,
-      "errors": 0
+      "p50": 8.0,
+      "p95": 8.0,
+      "max": 8.0,
+      "errors": 0,
+      "statuses": {
+        "200": 1
+      }
     },
     "register": {
       "count": 40,
-      "p50": 115.0,
-      "p95": 177.5,
-      "max": 196.5,
-      "errors": 0
+      "p50": 135.6,
+      "p95": 186.2,
+      "max": 200.4,
+      "errors": 0,
+      "statuses": {
+        "201": 40
+      }
     },
     "report_location": {
       "count": 2115,
-      "p50": 5.8,
-      "p95": 12.9,
-      "max": 61.4,
-      "errors": 0
+      "p50": 8.4,
+      "p95": 13.8,
+      "max": 48.6,
+      "errors": 0,
+      "statuses": {
+        "200": 2115
+      }
     },
     "set_status": {
       "count": 222,
-      "p50": 4.4,
-      "p95": 9.4,
-      "max": 15.9,
-      "errors": 0
+      "p50": 6.5,
+      "p95": 11.6,
+      "max": 76.9,
+      "errors": 0,
+      "statuses": {
+        "200": 222
+      }
     }
   },
   "steps": [
@@ -163,9 +183,9 @@
       "assigned_on_first_attempt": 61,
       "time_to_assign_s": {
         "count": 74,
-        "p50": 2.48,
-        "p95": 30.829,
-        "max": 31.237
+        "p50": 2.628,
+        "p95": 30.989,
+        "max": 31.487
       }
     }
   ],
@@ -175,13 +195,24 @@
       "seconds": 15.0,
       "orders_accepted": 10,
       "orders_never_dispatched": 0,
-      "events_published_after_s": 16.824,
+      "events_published_after_s": 17.002,
       "orders_dispatched_after_s": {
         "count": 10,
-        "p50": 16.789,
-        "p95": 16.914,
-        "max": 16.914
-      }
+        "p50": 16.904,
+        "p95": 17.004,
+        "max": 17.004
+      },
+      "requests_during": 390,
+      "requests_failed_during": 0,
+      "requests_failed_in_total": 0,
+      "failed_request_ms": {
+        "count": 0,
+        "p50": null,
+        "p95": null,
+        "max": null
+      },
+      "first_failure_after_s": null,
+      "last_failure_after_restart_s": null
     }
   ],
   "invariants": {
@@ -189,6 +220,8 @@
     "couriers_with_overlapping_orders": 0,
     "orders_left_pending": 0,
     "accepted_orders_missing": 0,
+    "orders_beyond_requests": 0,
+    "keys_with_two_orders": 0,
     "projection_mismatches": 0,
     "events_never_published": 0
   },
