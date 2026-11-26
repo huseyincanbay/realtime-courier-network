@@ -251,6 +251,44 @@ whatever arrives:
 `POST /api/v1/location/update`. A seeded courier that does so is no longer
 pinned as online and ages out like a real one until the next `pnpm seed`.
 
+## Load simulation
+
+`sim/` holds a Python simulator that drives the Docker stack through the
+gateway like any other client: seeded demand on an open-loop schedule, thirty
+courier agents that report positions and deliver, and faults injected by
+stopping containers. It reads its measurements from Postgres afterwards and
+fails the run if an invariant breaks: a courier holding two orders at once, an
+order assigned twice or left pending, an event never published.
+
+```
+pnpm sim:up
+pnpm sim scenarios/baseline.toml
+```
+
+| Scenario | Orders | Assigned | Time to assign p50 / p95 | Order API p95 | Outbox lag p95 | Invariant violations |
+|---|---|---|---|---|---|---|
+| baseline | 85 | 100.0% | 0.526 s / 0.966 s | 14.6 ms | 0.982 s | 0 |
+| broker-outage | 74 | 100.0% | 2.48 s / 30.829 s | 15.4 ms | 24.437 s | 0 |
+| ramp | 132 | 100.0% | 0.66 s / 30.976 s | 12.5 ms | 0.975 s | 0 |
+
+Thirty simulated couriers on one node (local Docker, 10 CPUs, 7.7 GB), moving
+at 150 m/s so a run fits in two to three minutes. Each run writes its full
+summary to `sim/results`.
+
+- **baseline** — 0.8 orders a second for two minutes; every order is assigned on
+  the first attempt.
+- **ramp** — 0.6, 1.2, then 1.8 orders a second. The first two steps assign
+  within a second at p95. The third outruns thirty couriers: about a third of
+  its orders wait for a 30-second retry, and none fail.
+- **broker-outage** — RabbitMQ stopped for 15 seconds under load. The ten
+  orders placed meanwhile were accepted with no API errors, held in the outbox,
+  and dispatched 17 seconds after the broker was restarted. None were lost.
+
+The first baseline run had a p95 of 30 seconds: dispatch asked for only the ten
+nearest couriers and, when all ten were busy, waited for a retry while free
+couriers were in range. Considering every courier in range brought it under a
+second.
+
 ## Deliberately out of scope
 
 Left out on purpose, each with an obvious production home:
@@ -267,8 +305,8 @@ Left out on purpose, each with an obvious production home:
   is the design — the outbox, the locks, the idempotent consumers — not this
   compose file.
 - **Broad test coverage.** The pure core, the circuit breaker and the order
-  state machine, is unit-tested; integration and end-to-end suites are left for
-  a real deployment.
+  state machine, is unit-tested, and the simulator checks the invariants under
+  load; integration suites are left for a real deployment.
 
 ## License
 
