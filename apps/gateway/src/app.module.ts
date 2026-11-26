@@ -1,6 +1,6 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { pinoOptions } from '@rcn/runtime';
@@ -25,7 +25,12 @@ import {
       envFilePath: ['.env', '../../.env'],
     }),
     LoggerModule.forRoot(pinoOptions('gateway')),
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => [
+        { ttl: 60000, limit: config.get('app').rateLimitPerMinute },
+      ],
+    }),
   ],
   controllers: [
     AuthProxyController,

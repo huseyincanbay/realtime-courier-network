@@ -11,6 +11,7 @@ export default registerAs('app', () => {
     port: parseInt(process.env.GATEWAY_PORT ?? '4000', 10),
     authGrpcUrl: process.env.AUTH_GRPC_URL ?? 'localhost:50052',
     tokenCacheTtl: parseInt(process.env.TOKEN_CACHE_TTL ?? '120', 10),
+    rateLimitPerMinute: parseInt(process.env.RATE_LIMIT_PER_MIN ?? '100', 10),
     services: {
       auth: process.env.AUTH_SERVICE_URL ?? 'http://localhost:3001',
       orders: process.env.ORDER_SERVICE_URL ?? 'http://localhost:3002',
