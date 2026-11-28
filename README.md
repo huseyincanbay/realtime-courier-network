@@ -4,7 +4,7 @@ Event-driven backend for on-demand courier dispatch - six NestJS services that
 carry an order from *placed* to *assigned and tracked live*, and the
 distributed-systems plumbing that makes that reliable.
 
-**Stack** — TypeScript · NestJS · PostgreSQL / PostGIS · Redis · RabbitMQ · gRPC · WebSocket · Docker
+**Stack** — TypeScript · NestJS · PostgreSQL / PostGIS · Redis · RabbitMQ · gRPC · WebSocket · Docker · Python (load simulator)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="sim/results/overview-dark.svg">
@@ -99,7 +99,7 @@ sequenceDiagram
     D->>L: couriers near pickup? (gRPC)
     L-->>D: candidates, nearest first
     alt a courier is free
-        Note over D: claim it — Redis SET NX lock
+        Note over D: claim it — Redis SET NX lock,<br/>one outcome per attempt (unique index)
         D-)MQ: order.assigned
         MQ-)O: order.assigned (read-model update)
         MQ-)RT: order.assigned
@@ -273,71 +273,61 @@ pinned as online and ages out like a real one until the next `pnpm seed`.
 `sim/` holds a Python simulator that drives the Docker stack through the
 gateway like any other client: seeded demand on an open-loop schedule, thirty
 courier agents that report positions and deliver, and faults injected by
-stopping containers. It reads its measurements from Postgres afterwards and
-fails the run if an invariant breaks: a courier holding two orders at once, an
-order assigned twice or left pending, an event never published. A queue it
-binds to the exchanges for the length of the run counts every event that was
-published more than once.
+stopping containers. It reads the outcome from Postgres and fails the run if an
+invariant breaks: an order assigned twice or left pending, a courier holding
+two orders, an event never published. A queue bound to the exchanges for the
+run counts events published more than once.
 
 ```
 pnpm sim:up
 pnpm sim scenarios/baseline.toml
 ```
 
-| Scenario | Orders | Assigned | Time to assign p50 / p95 | Order API p95 | Outbox lag p95 | Duplicate publishes | Invariant violations |
-|---|---|---|---|---|---|---|---|
-| auth-outage | 123 | 100.0% | 0.011 s / 0.078 s | 15.1 ms | 0.011 s | 0 | 0 |
-| baseline | 85 | 100.0% | 0.010 s / 0.065 s | 16.4 ms | 0.014 s | 0 | 0 |
-| broker-outage | 74 | 100.0% | 1.530 s / 30.032 s | 14.9 ms | 25.169 s | 0 | 0 |
-| dispatch-kill | 76 | 100.0% | 0.012 s / 7.840 s | 15.3 ms | 0.010 s | 0 | 0 |
-| ramp | 132 | 100.0% | 0.011 s / 30.090 s | 13.9 ms | 0.009 s | 0 | 0 |
-| retry-storm | 63 | 100.0% | 0.010 s / 0.073 s | 13.9 ms | 0.011 s | 0 | 0 |
-| scale-out | 68 | 100.0% | 0.018 s / 26.564 s | 18.1 ms | 26.227 s | 0 | 0 |
+| Scenario | What it does | Orders | Time to assign p50 / p95 | Duplicate publishes | Invariant violations |
+|---|---|---|---|---|---|
+| auth-outage | auth stopped for 30 s | 123 | 0.011 s / 0.078 s | 0 | 0 |
+| baseline | 0.8 orders a second for two minutes | 85 | 0.010 s / 0.065 s | 0 | 0 |
+| broker-outage | RabbitMQ stopped for 15 s | 74 | 1.530 s / 30.032 s | 0 | 0 |
+| dispatch-kill | dispatch killed for 10 s | 76 | 0.012 s / 7.840 s | 0 | 0 |
+| ramp | 0.6, 1.2, then 1.8 orders a second | 132 | 0.011 s / 30.090 s | 0 | 0 |
+| retry-storm | every order sent three times under one idempotency key | 63 | 0.010 s / 0.073 s | 0 | 0 |
+| scale-out | three copies of each worker, RabbitMQ stopped for 15 s | 68 | 0.018 s / 26.564 s | 0 | 0 |
 
-Thirty simulated couriers on one node (local Docker, 10 CPUs, 7.7 GB), moving
-at 150 m/s so a run fits in two to four minutes. Each run writes its full
-summary to `sim/results`.
+Thirty couriers on one machine (local Docker, 10 CPUs, 7.7 GB), moving at
+150 m/s so a run takes two to four minutes. The order API answers within 20 ms
+at p95 in every run; full summaries are in `sim/results`.
 
-- **baseline** — 0.8 orders a second for two minutes; every order is assigned on
-  the first attempt.
-- **ramp** — 0.6, 1.2, then 1.8 orders a second. The first two steps assign
-  within 70 ms at p95. The third outruns thirty couriers: about a quarter of
-  its orders wait for a 30-second retry, and none fail.
-- **broker-outage** — RabbitMQ stopped for 15 seconds under load. The ten
-  orders placed meanwhile were accepted with no API errors, held in the outbox,
-  and dispatched 16.6 seconds after the broker was restarted. None were lost.
-- **dispatch-kill** — dispatch killed outright for 10 seconds. The nine orders
-  placed meanwhile waited in its queue and were assigned within 1.1 seconds of
-  its return, each exactly once.
-- **auth-outage** — auth stopped for 30 seconds. Cached tokens carried traffic
-  for the first 19 seconds; after that the gateway refused requests in 3 ms at
-  the median instead of waiting out a 3-second timeout, and service resumed 22
-  seconds after auth returned. 20 of 143 orders were turned away; the 123
-  accepted were all delivered.
-- **retry-storm** — every order sent three times under one idempotency key:
-  189 requests, 63 orders. The concurrent duplicate gets `409`, the later one
-  the stored `201`.
-- **scale-out** — three copies each of orders, location and dispatch, started
-  with `pnpm sim:scale`, and RabbitMQ stopped for 15 seconds under load. The
-  dispatch copies shared the assignments 25, 18 and 25; no order went to two
-  couriers and no event was published twice. The gateway's HTTP connections
-  stayed on one copy of orders and of location, so what competes here is the
-  queue consumers and the outbox publishers.
+What the runs show:
 
-Four fixes came out of these runs. The first baseline had a p95 of 30 seconds:
-dispatch asked for only the ten nearest couriers and, when all ten were busy,
-waited for a retry while free couriers were in range. Considering every courier
-in range brought it under a second. What was left was the outbox, whose
-publisher polled once a second, so an event waited half a second on average
-before it left. Waking the publisher on commit took the median time to assign
-from 0.545 s to 0.010 s and the p95 from 0.975 s to 0.065 s.
+- **Overload degrades, it does not fail.** At 1.8 orders a second thirty
+  couriers are outrun: a quarter of the orders wait for a 30-second retry and
+  none are dropped.
+- **Outages lose nothing.** Orders accepted while RabbitMQ was down sat in the
+  outbox and were dispatched 16.6 seconds after it returned. Those placed while
+  dispatch was dead were assigned within 1.1 seconds of its restart, each once.
+- **A dead dependency fails fast.** With auth down and its cached tokens
+  expired, the gateway refused requests in 3 ms at the median instead of
+  waiting out a 3-second timeout. 20 of 143 orders were turned away; every
+  accepted one was delivered.
+- **Repeats are absorbed.** 189 requests under 63 idempotency keys made 63
+  orders, and three competing copies of each worker, started with
+  `pnpm sim:scale`, published no event twice. HTTP stayed on one copy of orders
+  and of location, so what competes there is the queue consumers and the
+  outbox publishers.
 
-The first scale-out run failed: of 68 orders one went to two couriers, and 29
-events were published more than once. Every copy's publisher read the same
-unpublished rows, and two dispatch workers handed the same event both passed
-the already-handled check before either had written its result. The publisher
-now claims its rows with `SKIP LOCKED`, and a unique index refuses the second
-outcome.
+And what they changed in the code:
+
+1. Dispatch asked for only the ten nearest couriers and waited for a retry
+   while free ones were in range. Considering every courier in range took the
+   baseline p95 from 30 seconds to under one.
+2. The outbox publisher polled once a second. Waking it on commit took the
+   median time to assign from 0.545 s to 0.010 s and the p95 from 0.975 s to
+   0.065 s.
+3. With three copies, every publisher read the same unpublished rows and 29
+   events went out more than once. Rows are now claimed with `SKIP LOCKED`.
+4. Two dispatch workers handed the same event both passed the already-handled
+   check, and one of 68 orders went to two couriers. A unique index now
+   refuses the second outcome.
 
 ## Deliberately out of scope
 
