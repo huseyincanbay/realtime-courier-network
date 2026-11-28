@@ -20,6 +20,11 @@ COLUMNS = (
     "order_to_delivery_s",
 )
 
+ROW = (
+    "| {name} | {created} | {rate}% | {p50} / {p95} | {api} | {outbox} "
+    "| {twice} | {broken} |"
+)
+
 
 def since(later: float | None, earlier: float) -> float | None:
     return None if later is None else round(later - earlier, 3)
@@ -58,15 +63,15 @@ def seconds(value: float | None) -> str:
 def table(folder: Path) -> str:
     header = (
         "| Scenario | Orders | Assigned | Time to assign p50 / p95 | Order API p95 "
-        "| Outbox lag p95 | Invariant violations |"
+        "| Outbox lag p95 | Duplicate publishes | Invariant violations |"
     )
-    lines = [header, "|---|---|---|---|---|---|---|"]
+    lines = [header, "|---|---|---|---|---|---|---|---|"]
     for path in sorted(folder.glob("*/summary.json")):
         summary = json.loads(path.read_text())
         orders = summary["orders"]
         assign = summary["time_to_assign_s"]
         lines.append(
-            "| {name} | {created} | {rate}% | {p50} / {p95} | {api} | {outbox} | {broken} |".format(
+            ROW.format(
                 name=summary["scenario"]["name"],
                 created=orders["created"],
                 rate=round(100 * orders["assignment_rate"], 1),
@@ -74,6 +79,7 @@ def table(folder: Path) -> str:
                 p95=seconds(assign["p95"]),
                 api=shown(summary["api_ms"]["create_order"]["p95"], " ms"),
                 outbox=seconds(summary["outbox_publish_lag_s"]["orders"]["p95"]),
+                twice=sum(summary["duplicate_publishes"].values()),
                 broken=sum(summary["invariants"].values()),
             )
         )
