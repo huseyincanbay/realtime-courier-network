@@ -17,6 +17,7 @@ from .agents import Ledger, drive, place_orders
 from .api import Account, Api, Stats
 from .broker import Broker
 from .faults import Docker, FaultEvent, inject
+from .figure import draw
 from .measure import measure
 from .report import headline, table, write
 from .scenario import Scenario, load
@@ -161,10 +162,14 @@ async def run(scenario: Scenario) -> int:
 
 def main() -> int:
     if len(sys.argv) != 2:
-        print("usage: python -m rcnsim <scenario.toml | table>")
+        print("usage: python -m rcnsim <scenario.toml | table | figure>")
         return 2
     if sys.argv[1] == "table":
         print(table(RESULTS))
+        return 0
+    if sys.argv[1] == "figure":
+        for path in draw(RESULTS):
+            print(f"wrote {path.name}")
         return 0
     return asyncio.run(run(load(Path(sys.argv[1]))))
 
