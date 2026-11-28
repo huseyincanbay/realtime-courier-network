@@ -1,4 +1,5 @@
 name = "dispatch-kill"
+description = "dispatch killed for 10 s"
 seed = 17
 warmup_s = 6
 drain_s = 45

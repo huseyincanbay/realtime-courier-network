@@ -44,6 +44,7 @@ class Fault:
 @dataclass(frozen=True)
 class Scenario:
     name: str
+    description: str
     seed: int
     warmup_s: float
     drain_s: float
@@ -65,6 +66,7 @@ def load(path: Path) -> Scenario:
     raw = tomllib.loads(path.read_text())
     return Scenario(
         name=raw["name"],
+        description=raw["description"],
         seed=raw["seed"],
         warmup_s=raw["warmup_s"],
         drain_s=raw["drain_s"],

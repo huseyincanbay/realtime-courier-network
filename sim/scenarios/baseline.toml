@@ -1,4 +1,5 @@
 name = "baseline"
+description = "0.8 orders a second for two minutes"
 seed = 7
 warmup_s = 6
 drain_s = 30

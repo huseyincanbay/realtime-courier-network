@@ -165,7 +165,7 @@ def main() -> int:
         print("usage: python -m rcnsim <scenario.toml | table | figure>")
         return 2
     if sys.argv[1] == "table":
-        print(table(RESULTS))
+        print(table(RESULTS, Path("scenarios")))
         return 0
     if sys.argv[1] == "figure":
         for path in draw(RESULTS):

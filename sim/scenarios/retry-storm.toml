@@ -1,4 +1,5 @@
 name = "retry-storm"
+description = "every order sent three times under one idempotency key"
 seed = 23
 warmup_s = 6
 drain_s = 35

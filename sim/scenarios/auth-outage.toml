@@ -1,4 +1,5 @@
 name = "auth-outage"
+description = "auth stopped for 30 s"
 seed = 19
 warmup_s = 6
 drain_s = 40

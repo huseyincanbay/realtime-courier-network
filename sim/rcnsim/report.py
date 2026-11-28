@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .measure import Outcome
+from .scenario import load
 
 COLUMNS = (
     "order_id",
@@ -20,10 +21,7 @@ COLUMNS = (
     "order_to_delivery_s",
 )
 
-ROW = (
-    "| {name} | {created} | {rate}% | {p50} / {p95} | {api} | {outbox} "
-    "| {twice} | {broken} |"
-)
+ROW = "| {name} | {does} | {created} | {p50} / {p95} | {twice} | {broken} |"
 
 
 def since(later: float | None, earlier: float) -> float | None:
@@ -60,25 +58,23 @@ def seconds(value: float | None) -> str:
     return "–" if value is None else f"{value:.3f} s"
 
 
-def table(folder: Path) -> str:
+def table(folder: Path, scenarios: Path) -> str:
     header = (
-        "| Scenario | Orders | Assigned | Time to assign p50 / p95 | Order API p95 "
-        "| Outbox lag p95 | Duplicate publishes | Invariant violations |"
+        "| Scenario | What it does | Orders | Time to assign p50 / p95 "
+        "| Duplicate publishes | Invariant violations |"
     )
-    lines = [header, "|---|---|---|---|---|---|---|---|"]
+    lines = [header, "|---|---|---|---|---|---|"]
     for path in sorted(folder.glob("*/summary.json")):
         summary = json.loads(path.read_text())
-        orders = summary["orders"]
+        name = summary["scenario"]["name"]
         assign = summary["time_to_assign_s"]
         lines.append(
             ROW.format(
-                name=summary["scenario"]["name"],
-                created=orders["created"],
-                rate=round(100 * orders["assignment_rate"], 1),
+                name=name,
+                does=load(scenarios / f"{name}.toml").description,
+                created=summary["orders"]["created"],
                 p50=seconds(assign["p50"]),
                 p95=seconds(assign["p95"]),
-                api=shown(summary["api_ms"]["create_order"]["p95"], " ms"),
-                outbox=seconds(summary["outbox_publish_lag_s"]["orders"]["p95"]),
                 twice=sum(summary["duplicate_publishes"].values()),
                 broken=sum(summary["invariants"].values()),
             )

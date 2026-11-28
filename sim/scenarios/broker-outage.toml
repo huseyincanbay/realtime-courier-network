@@ -1,4 +1,5 @@
 name = "broker-outage"
+description = "RabbitMQ stopped for 15 s"
 seed = 13
 warmup_s = 6
 drain_s = 45
