@@ -266,21 +266,24 @@ gateway like any other client: seeded demand on an open-loop schedule, thirty
 courier agents that report positions and deliver, and faults injected by
 stopping containers. It reads its measurements from Postgres afterwards and
 fails the run if an invariant breaks: a courier holding two orders at once, an
-order assigned twice or left pending, an event never published.
+order assigned twice or left pending, an event never published. A queue it
+binds to the exchanges for the length of the run counts every event that was
+published more than once.
 
 ```
 pnpm sim:up
 pnpm sim scenarios/baseline.toml
 ```
 
-| Scenario | Orders | Assigned | Time to assign p50 / p95 | Order API p95 | Outbox lag p95 | Invariant violations |
-|---|---|---|---|---|---|---|
-| auth-outage | 123 | 100.0% | 0.010 s / 0.076 s | 17.7 ms | 0.010 s | 0 |
-| baseline | 85 | 100.0% | 0.010 s / 0.077 s | 15.7 ms | 0.011 s | 0 |
-| broker-outage | 74 | 100.0% | 1.409 s / 30.028 s | 14.8 ms | 25.156 s | 0 |
-| dispatch-kill | 76 | 100.0% | 0.010 s / 7.421 s | 13.6 ms | 0.008 s | 0 |
-| ramp | 132 | 100.0% | 0.010 s / 30.025 s | 14.8 ms | 0.007 s | 0 |
-| retry-storm | 63 | 100.0% | 0.008 s / 0.077 s | 11.4 ms | 0.007 s | 0 |
+| Scenario | Orders | Assigned | Time to assign p50 / p95 | Order API p95 | Outbox lag p95 | Duplicate publishes | Invariant violations |
+|---|---|---|---|---|---|---|---|
+| auth-outage | 123 | 100.0% | 0.011 s / 0.078 s | 15.1 ms | 0.011 s | 0 | 0 |
+| baseline | 85 | 100.0% | 0.010 s / 0.065 s | 16.4 ms | 0.014 s | 0 | 0 |
+| broker-outage | 74 | 100.0% | 1.530 s / 30.032 s | 14.9 ms | 25.169 s | 0 | 0 |
+| dispatch-kill | 76 | 100.0% | 0.012 s / 7.840 s | 15.3 ms | 0.010 s | 0 | 0 |
+| ramp | 132 | 100.0% | 0.011 s / 30.090 s | 13.9 ms | 0.009 s | 0 | 0 |
+| retry-storm | 63 | 100.0% | 0.010 s / 0.073 s | 13.9 ms | 0.011 s | 0 | 0 |
+| scale-out | 68 | 100.0% | 0.018 s / 26.564 s | 18.1 ms | 26.227 s | 0 | 0 |
 
 Thirty simulated couriers on one node (local Docker, 10 CPUs, 7.7 GB), moving
 at 150 m/s so a run fits in two to four minutes. Each run writes its full
@@ -293,9 +296,9 @@ summary to `sim/results`.
   its orders wait for a 30-second retry, and none fail.
 - **broker-outage** — RabbitMQ stopped for 15 seconds under load. The ten
   orders placed meanwhile were accepted with no API errors, held in the outbox,
-  and dispatched 16.5 seconds after the broker was restarted. None were lost.
+  and dispatched 16.6 seconds after the broker was restarted. None were lost.
 - **dispatch-kill** — dispatch killed outright for 10 seconds. The nine orders
-  placed meanwhile waited in its queue and were assigned within 0.8 seconds of
+  placed meanwhile waited in its queue and were assigned within 1.1 seconds of
   its return, each exactly once.
 - **auth-outage** — auth stopped for 30 seconds. Cached tokens carried traffic
   for the first 19 seconds; after that the gateway refused requests in 3 ms at
@@ -305,14 +308,27 @@ summary to `sim/results`.
 - **retry-storm** — every order sent three times under one idempotency key:
   189 requests, 63 orders. The concurrent duplicate gets `409`, the later one
   the stored `201`.
+- **scale-out** — three copies each of orders, location and dispatch, started
+  with `pnpm sim:scale`, and RabbitMQ stopped for 15 seconds under load. The
+  dispatch copies shared the assignments 25, 18 and 25; no order went to two
+  couriers and no event was published twice. The gateway's HTTP connections
+  stayed on one copy of orders and of location, so what competes here is the
+  queue consumers and the outbox publishers.
 
-Two fixes came out of these runs. The first baseline had a p95 of 30 seconds:
+Four fixes came out of these runs. The first baseline had a p95 of 30 seconds:
 dispatch asked for only the ten nearest couriers and, when all ten were busy,
 waited for a retry while free couriers were in range. Considering every courier
 in range brought it under a second. What was left was the outbox, whose
 publisher polled once a second, so an event waited half a second on average
 before it left. Waking the publisher on commit took the median time to assign
-from 0.545 s to 0.010 s and the p95 from 0.975 s to 0.077 s.
+from 0.545 s to 0.010 s and the p95 from 0.975 s to 0.065 s.
+
+The first scale-out run failed: of 68 orders one went to two couriers, and 29
+events were published more than once. Every copy's publisher read the same
+unpublished rows, and two dispatch workers handed the same event both passed
+the already-handled check before either had written its result. The publisher
+now claims its rows with `SKIP LOCKED`, and a unique index refuses the second
+outcome.
 
 ## Deliberately out of scope
 
