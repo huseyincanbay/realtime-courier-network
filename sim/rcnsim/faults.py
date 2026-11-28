@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import socket
 import time
@@ -35,8 +36,22 @@ class Docker:
         await self._http.aclose()
 
     async def act(self, action: str, target: str) -> None:
+        if action == "flush":
+            await self.run(target, ["redis-cli", "FLUSHALL"])
+            return
         response = await self._http.post(f"/containers/rcn-{target}/{action}")
         response.raise_for_status()
+
+    async def run(self, target: str, command: list[str]) -> None:
+        for _ in range(20):
+            created = await self._http.post(f"/containers/rcn-{target}/exec", json={"Cmd": command})
+            created.raise_for_status()
+            ran = created.json()["Id"]
+            (await self._http.post(f"/exec/{ran}/start", json={"Detach": False})).raise_for_status()
+            if (await self._http.get(f"/exec/{ran}/json")).json()["ExitCode"] == 0:
+                return
+            await asyncio.sleep(0.5)
+        raise RuntimeError(f"{' '.join(command)} kept failing on {target}")
 
     async def replicas(self, service: str) -> int:
         if self._project is None:

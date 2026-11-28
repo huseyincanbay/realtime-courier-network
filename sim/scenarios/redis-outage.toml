@@ -1,0 +1,36 @@
+name = "redis-outage"
+description = "Redis killed for 15 s and brought back empty"
+seed = 31
+warmup_s = 6
+drain_s = 45
+customers = 10
+
+[region]
+lat = 37.8746
+lng = 32.4932
+radius_m = 2000
+
+[couriers]
+count = 30
+speed_mps = 150
+tick_s = 2
+pickup_wait_s = 2
+
+[[demand]]
+for_s = 90
+orders_per_s = 0.8
+
+[[faults]]
+at_s = 30
+action = "kill"
+target = "redis"
+
+[[faults]]
+at_s = 45
+action = "start"
+target = "redis"
+
+[[faults]]
+at_s = 47
+action = "flush"
+target = "redis"
