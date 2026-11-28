@@ -99,7 +99,7 @@ sequenceDiagram
     D->>L: couriers near pickup? (gRPC)
     L-->>D: candidates, nearest first
     alt a courier is free
-        Note over D: claim it — Redis SET NX lock,<br/>one outcome per attempt (unique index)
+        Note over D: claim it — Redis SET NX lock,<br/>guarded by unique indexes in Postgres
         D-)MQ: order.assigned
         MQ-)O: order.assigned (read-model update)
         MQ-)RT: order.assigned
@@ -133,6 +133,12 @@ moves an order out of `pending`. When two workers take the same event at the
 same moment, a unique index on order and attempt lets one outcome in; the other
 worker gives back the courier it had claimed.
 
+**The lock is the shortcut, the database is the guarantee.** A Redis lock
+claims a courier in one round trip, but Redis can come back from a crash with
+nothing in it. A second unique index allows one open order per courier, so an
+assignment the lock should have stopped is refused by Postgres, and dispatch
+rebuilds the lock from the row that refused it.
+
 **A broker-driven retry over an in-process scheduler.** Delayed retries wait in
 a consumer-less queue whose message TTL dead-letters them back to the working
 queue: durable across restarts, with no `setTimeout` to lose. The retry is
@@ -142,6 +148,9 @@ cannot come apart.
 **A hand-rolled circuit breaker over a library.** Under a hundred lines with no
 dependency, around every gRPC call. Five failures open it and it fails fast for
 thirty seconds; then one success closes it and one failure opens it again.
+Redis gets the same treatment on the request path: the gateway and auth send
+commands without an offline queue, so an outage is an immediate refusal
+instead of a held request.
 
 **A pessimistic row lock over optimistic versioning.** A status transition reads
 its order `FOR UPDATE` inside the transaction, so two concurrent updates
@@ -341,6 +350,9 @@ Left out on purpose, each with an obvious production home:
   rotation is the production extension.
 - **Pagination.** List endpoints cap at 50; keyset pagination is where this
   grows under real volume.
+- **Durable idempotency keys.** They live in Redis for a day, so a Redis that
+  loses its memory forgets which requests it has already answered. A table in
+  Postgres is where they would go.
 - **Multi-node and Kubernetes.** Everything runs on one machine. The scale-out
   scenario runs three copies of each worker there; separate nodes, a load
   balancer and an orchestrator are the production step.
