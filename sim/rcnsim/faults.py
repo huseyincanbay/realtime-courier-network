@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import socket
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -27,6 +29,7 @@ class Docker:
             base_url="http://docker",
             timeout=httpx.Timeout(60.0),
         )
+        self._project: str | None = None
 
     async def close(self) -> None:
         await self._http.aclose()
@@ -34,6 +37,21 @@ class Docker:
     async def act(self, action: str, target: str) -> None:
         response = await self._http.post(f"/containers/rcn-{target}/{action}")
         response.raise_for_status()
+
+    async def replicas(self, service: str) -> int:
+        if self._project is None:
+            me = (await self._http.get(f"/containers/{socket.gethostname()}/json")).json()
+            self._project = me["Config"]["Labels"]["com.docker.compose.project"]
+        labels = [
+            f"com.docker.compose.project={self._project}",
+            f"com.docker.compose.service={service}",
+        ]
+        response = await self._http.get(
+            "/containers/json",
+            params={"filters": json.dumps({"label": labels, "status": ["running"]})},
+        )
+        response.raise_for_status()
+        return len(response.json())
 
     async def host(self) -> dict[str, Any]:
         info = (await self._http.get("/info")).json()

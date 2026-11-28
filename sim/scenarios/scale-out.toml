@@ -1,0 +1,35 @@
+name = "scale-out"
+seed = 29
+warmup_s = 6
+drain_s = 45
+customers = 10
+
+[replicas]
+orders = 3
+location = 3
+dispatch = 3
+
+[region]
+lat = 39.7767
+lng = 30.5206
+radius_m = 2000
+
+[couriers]
+count = 30
+speed_mps = 150
+tick_s = 2
+pickup_wait_s = 2
+
+[[demand]]
+for_s = 90
+orders_per_s = 0.8
+
+[[faults]]
+at_s = 30
+action = "stop"
+target = "rabbitmq"
+
+[[faults]]
+at_s = 45
+action = "start"
+target = "rabbitmq"

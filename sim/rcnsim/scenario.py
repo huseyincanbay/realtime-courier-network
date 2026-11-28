@@ -49,6 +49,7 @@ class Scenario:
     drain_s: float
     customers: int
     copies: int
+    replicas: dict[str, int]
     region: Region
     couriers: Couriers
     demand: tuple[DemandStep, ...]
@@ -69,6 +70,7 @@ def load(path: Path) -> Scenario:
         drain_s=raw["drain_s"],
         customers=raw["customers"],
         copies=raw.get("copies", 1),
+        replicas=dict(raw.get("replicas", {})),
         region=Region(**raw["region"]),
         couriers=Couriers(**raw["couriers"]),
         demand=tuple(DemandStep(**step) for step in raw["demand"]),

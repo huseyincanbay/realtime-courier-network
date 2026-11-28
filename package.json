@@ -24,6 +24,7 @@
     "seed": "bash scripts/seed.sh",
     "track": "node scripts/track.mjs",
     "sim:up": "docker compose -f docker-compose.yml -f sim/compose.yml up --build -d",
+    "sim:scale": "docker compose -f docker-compose.yml -f sim/compose.yml -f sim/scale.yml up --build -d",
     "sim": "GIT_COMMIT=$(git rev-parse --short HEAD)$(git diff --quiet HEAD -- . ':(exclude)sim/results' || echo -dirty) docker compose -f docker-compose.yml -f sim/compose.yml run --rm --build sim",
     "test": "vitest run",
     "format": "prettier --write \"{apps,packages}/**/*.ts\""

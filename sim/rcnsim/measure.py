@@ -54,6 +54,13 @@ WHERE extract(epoch FROM created_at) >= $1 AND published_at IS NOT NULL
 
 UNPUBLISHED = "SELECT count(*) FROM {schema}.outbox_events WHERE published_at IS NULL"
 
+PUBLISHED = """
+SELECT exchange, count(*) AS events
+FROM {schema}.outbox_events
+WHERE extract(epoch FROM created_at) >= $1 AND published_at IS NOT NULL
+GROUP BY exchange
+"""
+
 
 @dataclass(frozen=True)
 class Outcome:
@@ -274,6 +281,7 @@ async def measure(
     customer_ids: list[str],
     ledger: Ledger,
     fault_events: list[FaultEvent],
+    delivered: dict[str, int],
     database_zero: float,
     demand_zero: float,
 ) -> tuple[dict[str, Any], list[Outcome]]:
@@ -287,6 +295,10 @@ async def measure(
         ]
         for schema in ("orders", "locations", "dispatch")
     }
+    stored: dict[str, int] = defaultdict(int)
+    for schema in ("orders", "locations", "dispatch"):
+        for row in await database.fetch(PUBLISHED.format(schema=schema), database_zero):
+            stored[row["exchange"]] += row["events"]
     unpublished = sum(
         [
             await database.fetchval(UNPUBLISHED.format(schema=schema))
@@ -300,13 +312,13 @@ async def measure(
         edge += step.for_s
         boundaries.append(edge)
     rows = outcomes(orders, logs, events, boundaries)
-    stored = {row.id for row in rows}
+    kept = {row.id for row in rows}
 
     invariants = {
         "orders_assigned_twice": sum(row.assignments > 1 for row in rows),
         "couriers_with_overlapping_orders": overlapping_assignments(rows),
         "orders_left_pending": sum(row.status == "pending" for row in rows),
-        "accepted_orders_missing": sum(order_id not in stored for order_id in ledger.accepted),
+        "accepted_orders_missing": sum(order_id not in kept for order_id in ledger.accepted),
         "orders_beyond_requests": max(0, len(rows) - len(ledger.lag)),
         "keys_with_two_orders": len(ledger.split_keys),
         "projection_mismatches": mismatched_projections(rows),
@@ -322,6 +334,9 @@ async def measure(
         "orders": order_counts(rows),
         **timings(rows),
         "outbox_publish_lag_s": {schema: spread(lags) for schema, lags in publish_lag.items()},
+        "duplicate_publishes": {
+            exchange: count - stored[exchange] for exchange, count in delivered.items()
+        },
         "api_ms": api_report(stats),
         "steps": [
             {

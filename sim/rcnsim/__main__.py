@@ -15,6 +15,7 @@ import httpx
 
 from .agents import Ledger, drive, place_orders
 from .api import Account, Api, Stats
+from .broker import Broker
 from .faults import Docker, FaultEvent, inject
 from .measure import measure
 from .report import headline, table, write
@@ -72,6 +73,9 @@ async def run(scenario: Scenario) -> int:
     stats = Stats()
     api = Api(os.environ["GATEWAY_URL"], stats)
     docker = Docker(os.environ.get("DOCKER_SOCKET", "/var/run/docker.sock"))
+    broker = Broker(
+        os.environ["BROKER_API"], os.environ["BROKER_USER"], os.environ["BROKER_PASSWORD"]
+    )
     database = await asyncpg.connect(
         host=os.environ["DB_HOST"],
         port=int(os.environ["DB_PORT"]),
@@ -80,6 +84,14 @@ async def run(scenario: Scenario) -> int:
         database=os.environ["DB_NAME"],
     )
     try:
+        for name in SERVICES:
+            running = await docker.replicas(name)
+            expected = scenario.replicas.get(name, 1)
+            if running != expected:
+                raise SystemExit(
+                    f"{name} runs {running} replicas, this scenario expects {expected}"
+                )
+
         run_id = secrets.token_hex(4)
         password = secrets.token_urlsafe(18)
         customers = await enroll(api, run_id, "customer", scenario.customers, password)
@@ -90,6 +102,7 @@ async def run(scenario: Scenario) -> int:
         if present:
             raise SystemExit(f"{present} couriers are already online around this region")
 
+        await broker.tap()
         started_at = datetime.now(UTC).isoformat(timespec="seconds")
         database_zero = await database.fetchval("SELECT extract(epoch FROM now())::float8")
         clock = Clock()
@@ -111,6 +124,7 @@ async def run(scenario: Scenario) -> int:
             )
             group.create_task(inject(docker, scenario.faults, clock, offset, fault_events))
         await asyncio.sleep(SETTLE_S)
+        delivered = await broker.drain()
 
         demand_zero = clock.wall_zero + offset
         summary, rows = await measure(
@@ -120,6 +134,7 @@ async def run(scenario: Scenario) -> int:
             [account.id for account in customers],
             ledger,
             fault_events,
+            delivered,
             database_zero,
             demand_zero,
         )
@@ -133,6 +148,8 @@ async def run(scenario: Scenario) -> int:
             **summary,
         }
     finally:
+        await broker.untap()
+        await broker.close()
         await database.close()
         await docker.close()
         await api.close()

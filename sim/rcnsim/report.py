@@ -92,6 +92,8 @@ def headline(summary: dict[str, Any]) -> str:
         counts,
         f"time to assign p50 {seconds(assign['p50'])}, p95 {seconds(assign['p95'])}",
         f"generator lag p95 {shown(summary['generator']['schedule_lag_ms']['p95'], ' ms')}",
+        "published more than once: "
+        + ", ".join(f"{name} {count}" for name, count in summary["duplicate_publishes"].items()),
     ]
     for name, count in summary["invariants"].items():
         lines.append(f"{'ok  ' if count == 0 else 'FAIL'} {name}: {count}")

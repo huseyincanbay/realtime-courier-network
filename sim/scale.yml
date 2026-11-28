@@ -1,0 +1,15 @@
+services:
+  orders:
+    container_name: !reset null
+    deploy:
+      replicas: 3
+
+  location:
+    container_name: !reset null
+    deploy:
+      replicas: 3
+
+  dispatch:
+    container_name: !reset null
+    deploy:
+      replicas: 3
