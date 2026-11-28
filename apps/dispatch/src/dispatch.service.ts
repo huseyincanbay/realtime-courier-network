@@ -9,7 +9,11 @@ import {
   OrderDispatchFailedEvent,
   ROUTING_KEYS,
 } from '@rcn/types';
-import { DispatchLogEntity } from './dispatch-log.entity';
+import {
+  DispatchLogEntity,
+  ONE_OPEN_ORDER_PER_COURIER,
+  ONE_OUTCOME_PER_ATTEMPT,
+} from './dispatch-log.entity';
 import { LocationGrpcClient, NearbyCourier } from './location-grpc.client';
 import { RedisLockService } from './redis-lock.service';
 
@@ -20,12 +24,10 @@ export interface OrderPayload {
   pickupLng: number;
 }
 
-const UNIQUE_VIOLATION = '23505';
-
-function isUniqueViolation(err: unknown): boolean {
+function violates(err: unknown, index: string): boolean {
   return (
     err instanceof QueryFailedError &&
-    (err.driverError as { code?: string }).code === UNIQUE_VIOLATION
+    (err.driverError as { constraint?: string }).constraint === index
   );
 }
 
@@ -53,7 +55,7 @@ export class DispatchService {
     try {
       await this.decide(payload, attemptNumber);
     } catch (err) {
-      if (!isUniqueViolation(err)) throw err;
+      if (!violates(err, ONE_OUTCOME_PER_ATTEMPT)) throw err;
       this.logger.log(
         `Order ${payload.orderId} attempt ${attemptNumber} was recorded by another worker — dropped`,
       );
@@ -79,6 +81,10 @@ export class DispatchService {
       try {
         await this.assign(payload.orderId, c, attemptNumber, candidates.length);
       } catch (err) {
+        if (violates(err, ONE_OPEN_ORDER_PER_COURIER)) {
+          await this.restoreLock(c.courierId, payload.orderId);
+          continue;
+        }
         await this.lock.releaseCourier(c.courierId, payload.orderId);
         throw err;
       }
@@ -99,11 +105,36 @@ export class DispatchService {
        ORDER BY created_at DESC LIMIT 1`,
       [orderId],
     );
+    await this.dataSource.query(
+      `UPDATE dispatch.dispatch_logs SET is_open = false WHERE order_id = $1 AND is_open`,
+      [orderId],
+    );
     if (row?.courier_id) await this.lock.releaseCourier(row.courier_id, orderId);
-    await this.log(orderId, status, row?.courier_id ?? null, null, 0, 0);
+    await this.log({ orderId, status, courierId: row?.courier_id ?? null, attemptNumber: 0 });
     this.logger.log(
       `Order ${orderId} ${status} — ${row?.courier_id ? 'courier released' : 'no courier held'}`,
     );
+  }
+
+  private async restoreLock(courierId: string, orderId: string): Promise<void> {
+    const [held] = await this.dataSource.query(
+      `SELECT order_id, created_at > now() - make_interval(secs => $2) AS fresh
+       FROM dispatch.dispatch_logs
+       WHERE courier_id = $1 AND is_open`,
+      [courierId, this.lock.ttlSeconds],
+    );
+    if (held?.fresh) {
+      await this.lock.holdCourier(courierId, held.order_id);
+      this.logger.warn(
+        `Courier ${courierId.slice(0, 8)} still carries order ${held.order_id} — lock restored`,
+      );
+      return;
+    }
+    await this.dataSource.query(
+      `UPDATE dispatch.dispatch_logs SET is_open = false WHERE courier_id = $1 AND is_open`,
+      [courierId],
+    );
+    await this.lock.releaseCourier(courierId, orderId);
   }
 
   private async alreadyHandled(orderId: string, attemptNumber: number): Promise<boolean> {
@@ -125,12 +156,15 @@ export class DispatchService {
     const etaMinutes = Math.max(1, Math.round((courier.distanceM / 1000 / 30) * 60));
     await this.dataSource.transaction(async (manager) => {
       await this.log(
-        orderId,
-        'assigned',
-        courier.courierId,
-        courier.distanceM,
-        attemptNumber,
-        found,
+        {
+          orderId,
+          status: 'assigned',
+          courierId: courier.courierId,
+          distanceM: courier.distanceM,
+          attemptNumber,
+          couriersFound: found,
+          open: true,
+        },
         manager,
       );
       await this.outbox.storeEvent(manager, {
@@ -154,7 +188,10 @@ export class DispatchService {
 
   private async fail(orderId: string, attempts: number, found: number): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
-      await this.log(orderId, 'failed', null, null, attempts, found, manager);
+      await this.log(
+        { orderId, status: 'failed', attemptNumber: attempts, couriersFound: found },
+        manager,
+      );
       await this.outbox.storeEvent(manager, {
         exchange: EXCHANGES.ORDER_EVENTS,
         routingKey: ROUTING_KEYS.ORDER_DISPATCH_FAILED,
@@ -176,7 +213,10 @@ export class DispatchService {
     found: number,
   ): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
-      await this.log(payload.orderId, 'no_courier', null, null, attemptNumber, found, manager);
+      await this.log(
+        { orderId: payload.orderId, status: 'no_courier', attemptNumber, couriersFound: found },
+        manager,
+      );
       await this.outbox.storeEvent(manager, {
         exchange: EXCHANGES.DISPATCH_RETRY,
         routingKey: ROUTING_KEYS.DISPATCH_RETRY,
@@ -189,17 +229,10 @@ export class DispatchService {
   }
 
   private async log(
-    orderId: string,
-    status: string,
-    courierId: string | null,
-    distanceM: number | null,
-    attemptNumber: number,
-    found: number,
+    entry: Partial<DispatchLogEntity>,
     manager: EntityManager = this.dataSource.manager,
   ): Promise<void> {
     const repo = manager.getRepository(DispatchLogEntity);
-    await repo.save(
-      repo.create({ orderId, status, courierId, distanceM, attemptNumber, couriersFound: found }),
-    );
+    await repo.save(repo.create(entry));
   }
 }
