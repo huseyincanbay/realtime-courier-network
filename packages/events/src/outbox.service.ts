@@ -73,20 +73,27 @@ export class OutboxService implements OnModuleDestroy, EntitySubscriberInterface
     }
   }
 
-  private async publishBatch(): Promise<number> {
-    const pending = await this.repo.find({
-      where: { publishedAt: IsNull() },
-      order: { createdAt: 'ASC' },
-      take: BATCH_SIZE,
+  private publishBatch(): Promise<number> {
+    return this.repo.manager.transaction(async (manager) => {
+      const pending = await manager.find(OutboxEntity, {
+        where: { publishedAt: IsNull() },
+        order: { createdAt: 'ASC' },
+        take: BATCH_SIZE,
+        lock: { mode: 'pessimistic_write', onLocked: 'skip_locked' },
+      });
+      if (pending.length === 0) return 0;
+      await Promise.all(
+        pending.map((evt) =>
+          this.rabbit.publish({ exchange: evt.exchange, routingKey: evt.routingKey }, evt.payload),
+        ),
+      );
+      await manager.update(
+        OutboxEntity,
+        { id: In(pending.map((evt) => evt.id)) },
+        { publishedAt: new Date() },
+      );
+      return pending.length;
     });
-    if (pending.length === 0) return 0;
-    await Promise.all(
-      pending.map((evt) =>
-        this.rabbit.publish({ exchange: evt.exchange, routingKey: evt.routingKey }, evt.payload),
-      ),
-    );
-    await this.repo.update({ id: In(pending.map((evt) => evt.id)) }, { publishedAt: new Date() });
-    return pending.length;
   }
 
   onModuleDestroy(): void {
