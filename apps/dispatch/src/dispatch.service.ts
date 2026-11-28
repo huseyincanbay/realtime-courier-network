@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DataSource, EntityManager } from 'typeorm';
-import { OutboxService, RabbitMQService } from '@rcn/events';
+import { DataSource, EntityManager, QueryFailedError } from 'typeorm';
+import { OutboxService } from '@rcn/events';
 import {
   EVENT_VERSIONS,
   EXCHANGES,
@@ -20,6 +20,15 @@ export interface OrderPayload {
   pickupLng: number;
 }
 
+const UNIQUE_VIOLATION = '23505';
+
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    err instanceof QueryFailedError &&
+    (err.driverError as { code?: string }).code === UNIQUE_VIOLATION
+  );
+}
+
 @Injectable()
 export class DispatchService {
   private readonly logger = new Logger(DispatchService.name);
@@ -27,7 +36,6 @@ export class DispatchService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly outbox: OutboxService,
-    private readonly rabbit: RabbitMQService,
     private readonly location: LocationGrpcClient,
     private readonly lock: RedisLockService,
     private readonly config: ConfigService,
@@ -42,7 +50,17 @@ export class DispatchService {
       this.logger.debug(`Order ${payload.orderId} attempt ${attemptNumber} already handled`);
       return;
     }
+    try {
+      await this.decide(payload, attemptNumber);
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+      this.logger.log(
+        `Order ${payload.orderId} attempt ${attemptNumber} was recorded by another worker — dropped`,
+      );
+    }
+  }
 
+  private async decide(payload: OrderPayload, attemptNumber: number): Promise<void> {
     const cfg = this.config.get('app');
     const radius = Math.min(
       cfg.baseRadiusM * Math.pow(1.5, attemptNumber - 1),
@@ -68,8 +86,7 @@ export class DispatchService {
     }
 
     if (attemptNumber < cfg.maxAttempts) {
-      await this.scheduleRetry(payload, attemptNumber);
-      await this.log(payload.orderId, 'no_courier', null, null, attemptNumber, candidates.length);
+      await this.retryLater(payload, attemptNumber, candidates.length);
     } else {
       await this.fail(payload.orderId, attemptNumber, candidates.length);
     }
@@ -153,11 +170,19 @@ export class DispatchService {
     this.logger.warn(`Order ${orderId} failed after ${attempts} attempts`);
   }
 
-  private async scheduleRetry(payload: OrderPayload, attemptNumber: number): Promise<void> {
-    await this.rabbit.publish(
-      { exchange: EXCHANGES.DISPATCH_RETRY, routingKey: ROUTING_KEYS.DISPATCH_RETRY },
-      { type: 'dispatch.retry', payload, attemptNumber: attemptNumber + 1 },
-    );
+  private async retryLater(
+    payload: OrderPayload,
+    attemptNumber: number,
+    found: number,
+  ): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      await this.log(payload.orderId, 'no_courier', null, null, attemptNumber, found, manager);
+      await this.outbox.storeEvent(manager, {
+        exchange: EXCHANGES.DISPATCH_RETRY,
+        routingKey: ROUTING_KEYS.DISPATCH_RETRY,
+        payload: { type: 'dispatch.retry', payload, attemptNumber: attemptNumber + 1 },
+      });
+    });
     this.logger.log(
       `Order ${payload.orderId} no courier — retry ${attemptNumber + 1} scheduled (30s)`,
     );

@@ -7,6 +7,10 @@ import {
 } from 'typeorm';
 
 @Entity({ schema: 'dispatch', name: 'dispatch_logs' })
+@Index('one_outcome_per_attempt', ['orderId', 'attemptNumber'], {
+  unique: true,
+  where: '"attempt_number" > 0',
+})
 export class DispatchLogEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
