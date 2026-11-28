@@ -13,10 +13,10 @@
     { "user": "admin", "vhost": "/", "configure": ".*", "write": ".*", "read": ".*" }
   ],
   "exchanges": [
-    { "name": "order_events", "vhost": "/", "type": "topic", "durable": true },
-    { "name": "location_events", "vhost": "/", "type": "topic", "durable": true },
-    { "name": "dispatch_retry_exchange", "vhost": "/", "type": "direct", "durable": true },
-    { "name": "dlx", "vhost": "/", "type": "direct", "durable": true }
+    { "name": "order_events", "vhost": "/", "type": "topic", "durable": true, "auto_delete": false },
+    { "name": "location_events", "vhost": "/", "type": "topic", "durable": true, "auto_delete": false },
+    { "name": "dispatch_retry_exchange", "vhost": "/", "type": "direct", "durable": true, "auto_delete": false },
+    { "name": "dlx", "vhost": "/", "type": "direct", "durable": true, "auto_delete": false }
   ],
   "queues": [
     {
