@@ -6,6 +6,7 @@
     "drain_s": 45,
     "customers": 10,
     "copies": 1,
+    "replicas": {},
     "region": {
       "lat": 36.8969,
       "lng": 30.7133,
@@ -38,8 +39,8 @@
     ]
   },
   "run": {
-    "started_at": "2026-11-28T12:07:28+00:00",
-    "commit": "9b85afd",
+    "started_at": "2026-11-28T15:46:11+00:00",
+    "commit": "efafc0e",
     "host": {
       "cpus": 10,
       "memory_gb": 7.7,
@@ -54,9 +55,9 @@
     "accepted": 76,
     "schedule_lag_ms": {
       "count": 76,
-      "p50": 1.6,
-      "p95": 5.7,
-      "max": 6.2
+      "p50": 1.5,
+      "p95": 6.1,
+      "max": 7.1
     }
   },
   "orders": {
@@ -71,68 +72,72 @@
   },
   "time_to_assign_s": {
     "count": 76,
-    "p50": 0.01,
-    "p95": 7.421,
-    "max": 8.653
+    "p50": 0.012,
+    "p95": 7.84,
+    "max": 8.951
   },
   "pickup_distance_m": {
     "count": 76,
-    "p50": 567.0,
-    "p95": 1869.0,
-    "max": 2160.0
+    "p50": 572.0,
+    "p95": 1724.0,
+    "max": 2502.0
   },
   "order_to_delivery_s": {
     "count": 76,
-    "p50": 25.362,
-    "p95": 37.254,
-    "max": 38.042
+    "p50": 24.53,
+    "p95": 38.534,
+    "max": 39.809
   },
   "outbox_publish_lag_s": {
     "orders": {
       "count": 304,
-      "p50": 0.004,
-      "p95": 0.008,
-      "max": 0.057
+      "p50": 0.006,
+      "p95": 0.01,
+      "max": 0.03
     },
     "locations": {
       "count": 2115,
       "p50": 0.005,
-      "p95": 0.008,
-      "max": 0.06
+      "p95": 0.009,
+      "max": 0.062
     },
     "dispatch": {
       "count": 76,
-      "p50": 0.004,
-      "p95": 0.048,
-      "max": 0.051
+      "p50": 0.005,
+      "p95": 0.055,
+      "max": 0.084
     }
+  },
+  "duplicate_publishes": {
+    "order_events": 0,
+    "location_events": 0
   },
   "api_ms": {
     "create_order": {
       "count": 76,
-      "p50": 7.0,
-      "p95": 13.6,
-      "max": 16.0,
+      "p50": 9.1,
+      "p95": 15.3,
+      "max": 35.9,
       "errors": 0,
       "statuses": {
         "201": 76
       }
     },
     "list_orders": {
-      "count": 1244,
-      "p50": 3.9,
-      "p95": 5.7,
-      "max": 53.7,
+      "count": 1249,
+      "p50": 4.5,
+      "p95": 7.2,
+      "max": 34.8,
       "errors": 0,
       "statuses": {
-        "200": 1244
+        "200": 1249
       }
     },
     "nearby": {
       "count": 1,
-      "p50": 14.8,
-      "p95": 14.8,
-      "max": 14.8,
+      "p50": 17.3,
+      "p95": 17.3,
+      "max": 17.3,
       "errors": 0,
       "statuses": {
         "200": 1
@@ -140,9 +145,9 @@
     },
     "register": {
       "count": 40,
-      "p50": 119.1,
-      "p95": 189.5,
-      "max": 205.2,
+      "p50": 168.9,
+      "p95": 252.3,
+      "max": 257.2,
       "errors": 0,
       "statuses": {
         "201": 40
@@ -150,9 +155,9 @@
     },
     "report_location": {
       "count": 2115,
-      "p50": 9.5,
-      "p95": 15.3,
-      "max": 46.9,
+      "p50": 9.1,
+      "p95": 14.5,
+      "max": 77.9,
       "errors": 0,
       "statuses": {
         "200": 2115
@@ -160,9 +165,9 @@
     },
     "set_status": {
       "count": 228,
-      "p50": 6.2,
-      "p95": 9.3,
-      "max": 18.7,
+      "p50": 7.8,
+      "p95": 12.9,
+      "max": 27.0,
       "errors": 0,
       "statuses": {
         "200": 228
@@ -183,9 +188,9 @@
       "assigned_on_first_attempt": 76,
       "time_to_assign_s": {
         "count": 76,
-        "p50": 0.01,
-        "p95": 7.421,
-        "max": 8.653
+        "p50": 0.012,
+        "p95": 7.84,
+        "max": 8.951
       }
     }
   ],
@@ -195,14 +200,14 @@
       "seconds": 10.0,
       "orders_accepted": 9,
       "orders_never_dispatched": 0,
-      "events_published_after_s": -0.376,
+      "events_published_after_s": -1.723,
       "orders_dispatched_after_s": {
         "count": 9,
-        "p50": 0.675,
-        "p95": 0.784,
-        "max": 0.784
+        "p50": 1.023,
+        "p95": 1.086,
+        "max": 1.086
       },
-      "requests_during": 275,
+      "requests_during": 272,
       "requests_failed_during": 0,
       "requests_failed_in_total": 0,
       "failed_request_ms": {

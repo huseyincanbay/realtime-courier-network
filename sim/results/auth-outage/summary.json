@@ -6,6 +6,7 @@
     "drain_s": 40,
     "customers": 10,
     "copies": 1,
+    "replicas": {},
     "region": {
       "lat": 37.0,
       "lng": 35.3213,
@@ -38,8 +39,8 @@
     ]
   },
   "run": {
-    "started_at": "2026-11-28T12:09:59+00:00",
-    "commit": "9b85afd",
+    "started_at": "2026-11-28T15:48:38+00:00",
+    "commit": "efafc0e",
     "host": {
       "cpus": 10,
       "memory_gb": 7.7,
@@ -54,9 +55,9 @@
     "accepted": 123,
     "schedule_lag_ms": {
       "count": 143,
-      "p50": 1.7,
-      "p95": 6.0,
-      "max": 6.8
+      "p50": 1.8,
+      "p95": 5.8,
+      "max": 7.5
     }
   },
   "orders": {
@@ -71,48 +72,52 @@
   },
   "time_to_assign_s": {
     "count": 123,
-    "p50": 0.01,
-    "p95": 0.076,
-    "max": 30.052
+    "p50": 0.011,
+    "p95": 0.078,
+    "max": 30.084
   },
   "pickup_distance_m": {
     "count": 123,
-    "p50": 468.0,
+    "p50": 446.0,
     "p95": 1506.0,
-    "max": 2516.0
+    "max": 1765.0
   },
   "order_to_delivery_s": {
     "count": 123,
-    "p50": 24.547,
-    "p95": 56.428,
-    "max": 63.917
+    "p50": 24.974,
+    "p95": 53.724,
+    "max": 65.981
   },
   "outbox_publish_lag_s": {
     "orders": {
       "count": 492,
-      "p50": 0.004,
-      "p95": 0.01,
-      "max": 0.059
+      "p50": 0.005,
+      "p95": 0.011,
+      "max": 0.069
     },
     "locations": {
-      "count": 2687,
+      "count": 2685,
       "p50": 0.005,
-      "p95": 0.008,
-      "max": 0.063
+      "p95": 0.009,
+      "max": 0.065
     },
     "dispatch": {
-      "count": 123,
-      "p50": 0.004,
-      "p95": 0.043,
-      "max": 0.055
+      "count": 125,
+      "p50": 0.005,
+      "p95": 0.052,
+      "max": 0.056
     }
+  },
+  "duplicate_publishes": {
+    "order_events": 0,
+    "location_events": 0
   },
   "api_ms": {
     "create_order": {
       "count": 143,
-      "p50": 7.3,
-      "p95": 17.7,
-      "max": 31.3,
+      "p50": 7.6,
+      "p95": 15.1,
+      "max": 18.6,
       "errors": 20,
       "statuses": {
         "201": 123,
@@ -120,21 +125,21 @@
       }
     },
     "list_orders": {
-      "count": 1649,
-      "p50": 3.8,
-      "p95": 6.1,
-      "max": 3002.5,
-      "errors": 247,
+      "count": 1614,
+      "p50": 4.2,
+      "p95": 7.1,
+      "max": 2290.7,
+      "errors": 213,
       "statuses": {
-        "200": 1402,
-        "401": 247
+        "200": 1401,
+        "401": 213
       }
     },
     "nearby": {
       "count": 1,
-      "p50": 14.1,
-      "p95": 14.1,
-      "max": 14.1,
+      "p50": 19.3,
+      "p95": 19.3,
+      "max": 19.3,
       "errors": 0,
       "statuses": {
         "200": 1
@@ -142,9 +147,9 @@
     },
     "register": {
       "count": 40,
-      "p50": 127.3,
-      "p95": 210.2,
-      "max": 213.5,
+      "p50": 138.8,
+      "p95": 206.7,
+      "max": 218.1,
       "errors": 0,
       "statuses": {
         "201": 40
@@ -153,23 +158,23 @@
     "report_location": {
       "count": 3165,
       "p50": 8.5,
-      "p95": 15.4,
-      "max": 3014.5,
-      "errors": 478,
+      "p95": 14.3,
+      "max": 3011.8,
+      "errors": 480,
       "statuses": {
-        "200": 2687,
-        "401": 478
+        "200": 2685,
+        "401": 480
       }
     },
     "set_status": {
-      "count": 568,
-      "p50": 4.7,
-      "p95": 9.2,
-      "max": 27.0,
-      "errors": 199,
+      "count": 601,
+      "p50": 5.0,
+      "p95": 10.7,
+      "max": 2888.2,
+      "errors": 232,
       "statuses": {
         "200": 369,
-        "401": 199
+        "401": 232
       }
     }
   },
@@ -187,9 +192,9 @@
       "assigned_on_first_attempt": 121,
       "time_to_assign_s": {
         "count": 123,
-        "p50": 0.01,
-        "p95": 0.076,
-        "max": 30.052
+        "p50": 0.011,
+        "p95": 0.078,
+        "max": 30.084
       }
     }
   ],
@@ -199,23 +204,23 @@
       "seconds": 30.0,
       "orders_accepted": 27,
       "orders_never_dispatched": 0,
-      "events_published_after_s": -2.807,
+      "events_published_after_s": -2.798,
       "orders_dispatched_after_s": {
         "count": 27,
-        "p50": -16.69,
-        "p95": -4.021,
-        "max": -2.801
+        "p50": -16.681,
+        "p95": -4.016,
+        "max": -2.792
       },
-      "requests_during": 808,
-      "requests_failed_during": 266,
-      "requests_failed_in_total": 944,
+      "requests_during": 805,
+      "requests_failed_during": 265,
+      "requests_failed_in_total": 945,
       "failed_request_ms": {
-        "count": 944,
-        "p50": 3.3,
-        "p95": 9.7,
-        "max": 3014.5
+        "count": 945,
+        "p50": 3.2,
+        "p95": 9.5,
+        "max": 3011.8
       },
-      "first_failure_after_s": 19.0,
+      "first_failure_after_s": 19.1,
       "last_failure_after_restart_s": 22.1
     }
   ],
