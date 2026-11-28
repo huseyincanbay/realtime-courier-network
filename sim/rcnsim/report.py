@@ -51,6 +51,10 @@ def shown(value: Any, unit: str = "") -> str:
     return "–" if value is None else f"{value}{unit}"
 
 
+def seconds(value: float | None) -> str:
+    return "–" if value is None else f"{value:.3f} s"
+
+
 def table(folder: Path) -> str:
     header = (
         "| Scenario | Orders | Assigned | Time to assign p50 / p95 | Order API p95 "
@@ -66,10 +70,10 @@ def table(folder: Path) -> str:
                 name=summary["scenario"]["name"],
                 created=orders["created"],
                 rate=round(100 * orders["assignment_rate"], 1),
-                p50=shown(assign["p50"], " s"),
-                p95=shown(assign["p95"], " s"),
+                p50=seconds(assign["p50"]),
+                p95=seconds(assign["p95"]),
                 api=shown(summary["api_ms"]["create_order"]["p95"], " ms"),
-                outbox=shown(summary["outbox_publish_lag_s"]["orders"]["p95"], " s"),
+                outbox=seconds(summary["outbox_publish_lag_s"]["orders"]["p95"]),
                 broken=sum(summary["invariants"].values()),
             )
         )
@@ -86,7 +90,7 @@ def headline(summary: dict[str, Any]) -> str:
     )
     lines = [
         counts,
-        f"time to assign p50 {shown(assign['p50'], ' s')}, p95 {shown(assign['p95'], ' s')}",
+        f"time to assign p50 {seconds(assign['p50'])}, p95 {seconds(assign['p95'])}",
         f"generator lag p95 {shown(summary['generator']['schedule_lag_ms']['p95'], ' ms')}",
     ]
     for name, count in summary["invariants"].items():
