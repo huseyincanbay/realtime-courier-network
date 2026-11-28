@@ -1,6 +1,14 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, IsNull, Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import {
+  DataSource,
+  EntityManager,
+  EntitySubscriberInterface,
+  In,
+  IsNull,
+  Repository,
+  TransactionCommitEvent,
+} from 'typeorm';
 import { RabbitMQService } from './rabbitmq.service';
 import { OutboxEntity } from './outbox.entity';
 
@@ -10,50 +18,75 @@ export interface OutboxEvent {
   payload: Record<string, unknown>;
 }
 
+const BATCH_SIZE = 50;
+
 @Injectable()
-export class OutboxService implements OnModuleDestroy {
+export class OutboxService implements OnModuleDestroy, EntitySubscriberInterface {
   private readonly logger = new Logger(OutboxService.name);
   private timer: NodeJS.Timeout | null = null;
-  private publishing = false;
+  private draining = false;
+  private wokenWhileDraining = false;
 
   constructor(
     @InjectRepository(OutboxEntity)
     private readonly repo: Repository<OutboxEntity>,
     private readonly rabbit: RabbitMQService,
-  ) {}
+    @InjectDataSource() dataSource: DataSource,
+  ) {
+    dataSource.subscribers.push(this);
+  }
 
   async storeEvent(manager: EntityManager, event: OutboxEvent): Promise<void> {
     const repo = manager.getRepository(OutboxEntity);
     await repo.save(repo.create(event));
+    if (manager.queryRunner) manager.queryRunner.data.outboxWritten = true;
   }
 
-  startPublisher(intervalMs = 1000): void {
-    this.timer = setInterval(() => {
-      if (this.publishing) return;
-      this.publishing = true;
-      this.publishPending()
-        .catch((e) => this.logger.error(`Publish loop failed: ${(e as Error).message}`))
-        .finally(() => {
-          this.publishing = false;
-        });
-    }, intervalMs);
+  afterTransactionCommit(event: TransactionCommitEvent): void {
+    if (!event.queryRunner.data.outboxWritten) return;
+    event.queryRunner.data.outboxWritten = false;
+    void this.drain();
+  }
+
+  startPublisher(sweepMs = 1000): void {
+    this.timer = setInterval(() => void this.drain(), sweepMs);
     this.timer.unref?.();
   }
 
-  private async publishPending(): Promise<void> {
+  private async drain(): Promise<void> {
+    if (!this.rabbit.isConnected()) return;
+    if (this.draining) {
+      this.wokenWhileDraining = true;
+      return;
+    }
+    this.draining = true;
+    try {
+      let published: number;
+      do {
+        this.wokenWhileDraining = false;
+        published = await this.publishBatch();
+      } while (published === BATCH_SIZE || this.wokenWhileDraining);
+    } catch (e) {
+      this.logger.error(`Publish loop failed: ${(e as Error).message}`);
+    } finally {
+      this.draining = false;
+    }
+  }
+
+  private async publishBatch(): Promise<number> {
     const pending = await this.repo.find({
       where: { publishedAt: IsNull() },
       order: { createdAt: 'ASC' },
-      take: 50,
+      take: BATCH_SIZE,
     });
-    for (const evt of pending) {
-      await this.rabbit.publish(
-        { exchange: evt.exchange, routingKey: evt.routingKey },
-        evt.payload,
-      );
-      evt.publishedAt = new Date();
-      await this.repo.save(evt);
-    }
+    if (pending.length === 0) return 0;
+    await Promise.all(
+      pending.map((evt) =>
+        this.rabbit.publish({ exchange: evt.exchange, routingKey: evt.routingKey }, evt.payload),
+      ),
+    );
+    await this.repo.update({ id: In(pending.map((evt) => evt.id)) }, { publishedAt: new Date() });
+    return pending.length;
   }
 
   onModuleDestroy(): void {
