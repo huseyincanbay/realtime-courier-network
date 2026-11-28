@@ -16,6 +16,7 @@ export class RedisService implements OnModuleDestroy {
       host: cfg.redis.host,
       port: cfg.redis.port,
       password: cfg.redis.password,
+      enableOfflineQueue: false,
     });
   }
 

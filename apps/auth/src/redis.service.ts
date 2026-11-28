@@ -8,7 +8,12 @@ export class RedisService implements OnModuleDestroy {
 
   constructor(config: ConfigService) {
     const r = config.get('app').redis;
-    this.client = new Redis({ host: r.host, port: r.port, password: r.password });
+    this.client = new Redis({
+      host: r.host,
+      port: r.port,
+      password: r.password,
+      enableOfflineQueue: false,
+    });
   }
 
   async ping(): Promise<boolean> {
