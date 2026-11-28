@@ -35,7 +35,7 @@ export class RabbitMQService implements OnModuleDestroy {
   }
 
   private async establish(): Promise<void> {
-    this.connection = await amqp.connect(this.url);
+    this.connection = await amqp.connect(this.url, { noDelay: true });
     this.channel = await this.connection.createConfirmChannel();
     this.reconnectDelay = 1000;
     this.logger.log('Connected to RabbitMQ');
