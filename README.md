@@ -114,16 +114,21 @@ atomically, so the event goes into the same transaction as the state change. A
 separate publisher ships it and marks it sent only once the broker confirms.
 The commit itself wakes the publisher, so an event reaches the broker within
 milliseconds; a one-second sweep picks up whatever a crash or a broker outage
-left behind.
+left behind. Each publisher claims its rows with `FOR UPDATE SKIP LOCKED`, so
+several copies of a service never ship the same row twice.
 
 **Idempotent consumers over exactly-once delivery.** The outbox delivers at
 least once, so consumers take a repeat safely: dispatch skips an attempt it has
 already logged, and orders applies a dispatch outcome with an update that only
-moves an order out of `pending`.
+moves an order out of `pending`. When two workers take the same event at the
+same moment, a unique index on order and attempt lets one outcome in; the other
+worker gives back the courier it had claimed.
 
 **A broker-driven retry over an in-process scheduler.** Delayed retries wait in
 a consumer-less queue whose message TTL dead-letters them back to the working
-queue: durable across restarts, with no `setTimeout` to lose.
+queue: durable across restarts, with no `setTimeout` to lose. The retry is
+written through the outbox together with the attempt it follows, so the two
+cannot come apart.
 
 **A hand-rolled circuit breaker over a library.** Under a hundred lines with no
 dependency, around every gRPC call. Five failures open it and it fails fast for
@@ -321,9 +326,9 @@ Left out on purpose, each with an obvious production home:
   rotation is the production extension.
 - **Pagination.** List endpoints cap at 50; keyset pagination is where this
   grows under real volume.
-- **Multi-node and Kubernetes.** Everything runs on a single node. What scales
-  is the design — the outbox, the locks, the idempotent consumers — not this
-  compose file.
+- **Multi-node and Kubernetes.** Everything runs on one machine. The scale-out
+  scenario runs three copies of each worker there; separate nodes, a load
+  balancer and an orchestrator are the production step.
 - **Broad test coverage.** The pure core, the circuit breaker and the order
   state machine, is unit-tested, and the simulator checks the invariants under
   load; integration suites are left for a real deployment.
