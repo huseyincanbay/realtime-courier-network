@@ -35,8 +35,8 @@
     "faults": []
   },
   "run": {
-    "started_at": "2026-11-26T20:00:18+00:00",
-    "commit": "f1e1a17-dirty",
+    "started_at": "2026-11-28T12:01:24+00:00",
+    "commit": "9b85afd",
     "host": {
       "cpus": 10,
       "memory_gb": 7.7,
@@ -51,9 +51,9 @@
     "accepted": 132,
     "schedule_lag_ms": {
       "count": 132,
-      "p50": 1.5,
-      "p95": 5.6,
-      "max": 6.7
+      "p50": 2.0,
+      "p95": 6.1,
+      "max": 6.5
     }
   },
   "orders": {
@@ -64,72 +64,72 @@
     "pending": 0,
     "in_progress": 0,
     "assignment_rate": 1.0,
-    "assigned_on_first_attempt": 114
+    "assigned_on_first_attempt": 113
   },
   "time_to_assign_s": {
     "count": 132,
-    "p50": 0.612,
-    "p95": 30.927,
-    "max": 61.034
+    "p50": 0.01,
+    "p95": 30.025,
+    "max": 60.04
   },
   "pickup_distance_m": {
     "count": 132,
-    "p50": 685.0,
-    "p95": 2313.0,
-    "max": 3390.0
+    "p50": 753.0,
+    "p95": 2874.0,
+    "max": 3389.0
   },
   "order_to_delivery_s": {
     "count": 132,
-    "p50": 25.446,
-    "p95": 63.183,
-    "max": 85.078
+    "p50": 25.059,
+    "p95": 64.43,
+    "max": 81.043
   },
   "outbox_publish_lag_s": {
     "orders": {
       "count": 528,
-      "p50": 0.539,
-      "p95": 0.966,
-      "max": 1.026
+      "p50": 0.004,
+      "p95": 0.007,
+      "max": 0.057
     },
     "locations": {
       "count": 3015,
-      "p50": 0.508,
-      "p95": 0.949,
-      "max": 1.01
+      "p50": 0.005,
+      "p95": 0.009,
+      "max": 0.059
     },
     "dispatch": {
       "count": 132,
-      "p50": 0.991,
-      "p95": 1.008,
-      "max": 1.038
+      "p50": 0.004,
+      "p95": 0.045,
+      "max": 0.056
     }
   },
   "api_ms": {
     "create_order": {
       "count": 132,
-      "p50": 6.4,
-      "p95": 15.3,
-      "max": 60.3,
+      "p50": 7.3,
+      "p95": 14.8,
+      "max": 19.4,
       "errors": 0,
       "statuses": {
         "201": 132
       }
     },
     "list_orders": {
-      "count": 1528,
-      "p50": 3.8,
-      "p95": 7.0,
-      "max": 59.2,
+      "count": 1480,
+      "p50": 4.1,
+      "p95": 5.7,
+      "max": 54.4,
       "errors": 0,
       "statuses": {
-        "200": 1528
+        "200": 1480
       }
     },
     "nearby": {
       "count": 1,
-      "p50": 24.3,
-      "p95": 24.3,
-      "max": 24.3,
+      "p50": 12.8,
+      "p95": 12.8,
+      "max": 12.8,
       "errors": 0,
       "statuses": {
         "200": 1
@@ -137,9 +137,9 @@
     },
     "register": {
       "count": 40,
-      "p50": 180.2,
-      "p95": 260.8,
-      "max": 271.5,
+      "p50": 131.9,
+      "p95": 186.6,
+      "max": 201.4,
       "errors": 0,
       "statuses": {
         "201": 40
@@ -147,9 +147,9 @@
     },
     "report_location": {
       "count": 3015,
-      "p50": 8.2,
-      "p95": 13.9,
-      "max": 88.9,
+      "p50": 9.4,
+      "p95": 15.4,
+      "max": 30.3,
       "errors": 0,
       "statuses": {
         "200": 3015
@@ -157,9 +157,9 @@
     },
     "set_status": {
       "count": 396,
-      "p50": 6.3,
-      "p95": 12.0,
-      "max": 28.9,
+      "p50": 6.6,
+      "p95": 10.2,
+      "max": 20.8,
       "errors": 0,
       "statuses": {
         "200": 396
@@ -180,9 +180,9 @@
       "assigned_on_first_attempt": 24,
       "time_to_assign_s": {
         "count": 24,
-        "p50": 0.498,
-        "p95": 0.954,
-        "max": 0.971
+        "p50": 0.01,
+        "p95": 0.069,
+        "max": 0.11
       }
     },
     {
@@ -198,9 +198,9 @@
       "assigned_on_first_attempt": 39,
       "time_to_assign_s": {
         "count": 39,
-        "p50": 0.622,
-        "p95": 0.97,
-        "max": 0.985
+        "p50": 0.009,
+        "p95": 0.057,
+        "max": 0.094
       }
     },
     {
@@ -213,12 +213,12 @@
       "pending": 0,
       "in_progress": 0,
       "assignment_rate": 1.0,
-      "assigned_on_first_attempt": 51,
+      "assigned_on_first_attempt": 50,
       "time_to_assign_s": {
         "count": 69,
-        "p50": 0.653,
-        "p95": 60.488,
-        "max": 61.034
+        "p50": 0.01,
+        "p95": 30.031,
+        "max": 60.04
       }
     }
   ],
