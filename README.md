@@ -112,6 +112,9 @@ sequenceDiagram
 **Outbox over dual-write.** The database and the broker cannot be committed to
 atomically, so the event goes into the same transaction as the state change. A
 separate publisher ships it and marks it sent only once the broker confirms.
+The commit itself wakes the publisher, so an event reaches the broker within
+milliseconds; a one-second sweep picks up whatever a crash or a broker outage
+left behind.
 
 **Idempotent consumers over exactly-once delivery.** The outbox delivers at
 least once, so consumers take a repeat safely: dispatch skips an attempt it has
@@ -192,7 +195,7 @@ with `"status": "pending"` and no courier yet:
 }
 ```
 
-**Follow it** — `GET /api/v1/orders/{id}`. A second or two later it reads
+**Follow it** — `GET /api/v1/orders/{id}`. A moment later it reads
 `"status": "assigned"` with `"courierId": "a0000000-…-03"`: dispatch found the
 nearest online courier, locked it, and the assignment propagated back onto the
 order's own record. With nobody in range (try a pickup at `10.0, 10.0`) it reads
