@@ -6,6 +6,15 @@ distributed-systems plumbing that makes that reliable.
 
 **Stack** — TypeScript · NestJS · PostgreSQL / PostGIS · Redis · RabbitMQ · gRPC · WebSocket · Docker
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="sim/results/overview-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="sim/results/overview-light.svg">
+  <img src="sim/results/overview-light.svg" width="840" alt="Headline results of the load simulation: orders simulated, orders assigned to two couriers, orders lost in an outage, and the p95 time to assign after each fix. The table under Load simulation has every figure.">
+</picture>
+
+Every figure above comes out of the [load simulator](#load-simulation);
+`pnpm sim figure` redraws it from `sim/results`.
+
 **What it demonstrates**
 
 - **Transactional outbox** — the order row and its event commit together, or not at all
