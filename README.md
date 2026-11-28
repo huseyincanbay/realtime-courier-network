@@ -270,12 +270,12 @@ pnpm sim scenarios/baseline.toml
 
 | Scenario | Orders | Assigned | Time to assign p50 / p95 | Order API p95 | Outbox lag p95 | Invariant violations |
 |---|---|---|---|---|---|---|
-| auth-outage | 123 | 100.0% | 0.581 s / 1.008 s | 15.2 ms | 0.98 s | 0 |
-| baseline | 85 | 100.0% | 0.545 s / 0.975 s | 14.5 ms | 0.944 s | 0 |
-| broker-outage | 74 | 100.0% | 2.628 s / 30.989 s | 14.3 ms | 25.308 s | 0 |
-| dispatch-kill | 76 | 100.0% | 0.636 s / 7.447 s | 15.0 ms | 0.947 s | 0 |
-| ramp | 132 | 100.0% | 0.612 s / 30.927 s | 15.3 ms | 0.966 s | 0 |
-| retry-storm | 63 | 100.0% | 0.539 s / 0.968 s | 11.9 ms | 0.966 s | 0 |
+| auth-outage | 123 | 100.0% | 0.010 s / 0.076 s | 17.7 ms | 0.010 s | 0 |
+| baseline | 85 | 100.0% | 0.010 s / 0.077 s | 15.7 ms | 0.011 s | 0 |
+| broker-outage | 74 | 100.0% | 1.409 s / 30.028 s | 14.8 ms | 25.156 s | 0 |
+| dispatch-kill | 76 | 100.0% | 0.010 s / 7.421 s | 13.6 ms | 0.008 s | 0 |
+| ramp | 132 | 100.0% | 0.010 s / 30.025 s | 14.8 ms | 0.007 s | 0 |
+| retry-storm | 63 | 100.0% | 0.008 s / 0.077 s | 11.4 ms | 0.007 s | 0 |
 
 Thirty simulated couriers on one node (local Docker, 10 CPUs, 7.7 GB), moving
 at 150 m/s so a run fits in two to four minutes. Each run writes its full
@@ -284,16 +284,16 @@ summary to `sim/results`.
 - **baseline** — 0.8 orders a second for two minutes; every order is assigned on
   the first attempt.
 - **ramp** — 0.6, 1.2, then 1.8 orders a second. The first two steps assign
-  within a second at p95. The third outruns thirty couriers: about a quarter of
+  within 70 ms at p95. The third outruns thirty couriers: about a quarter of
   its orders wait for a 30-second retry, and none fail.
 - **broker-outage** — RabbitMQ stopped for 15 seconds under load. The ten
   orders placed meanwhile were accepted with no API errors, held in the outbox,
-  and dispatched 17 seconds after the broker was restarted. None were lost.
+  and dispatched 16.5 seconds after the broker was restarted. None were lost.
 - **dispatch-kill** — dispatch killed outright for 10 seconds. The nine orders
-  placed meanwhile waited in its queue and were assigned 0.7 seconds after it
-  came back, each exactly once.
+  placed meanwhile waited in its queue and were assigned within 0.8 seconds of
+  its return, each exactly once.
 - **auth-outage** — auth stopped for 30 seconds. Cached tokens carried traffic
-  for the first 19 seconds; after that the gateway refused requests in 4 ms at
+  for the first 19 seconds; after that the gateway refused requests in 3 ms at
   the median instead of waiting out a 3-second timeout, and service resumed 22
   seconds after auth returned. 20 of 143 orders were turned away; the 123
   accepted were all delivered.
@@ -301,10 +301,13 @@ summary to `sim/results`.
   189 requests, 63 orders. The concurrent duplicate gets `409`, the later one
   the stored `201`.
 
-The first baseline run had a p95 of 30 seconds: dispatch asked for only the ten
-nearest couriers and, when all ten were busy, waited for a retry while free
-couriers were in range. Considering every courier in range brought it under a
-second.
+Two fixes came out of these runs. The first baseline had a p95 of 30 seconds:
+dispatch asked for only the ten nearest couriers and, when all ten were busy,
+waited for a retry while free couriers were in range. Considering every courier
+in range brought it under a second. What was left was the outbox, whose
+publisher polled once a second, so an event waited half a second on average
+before it left. Waking the publisher on commit took the median time to assign
+from 0.545 s to 0.010 s and the p95 from 0.975 s to 0.077 s.
 
 ## Deliberately out of scope
 
